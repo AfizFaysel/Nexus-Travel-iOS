@@ -11,7 +11,7 @@ final class AuthCodeVisualUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["main-tab-profile"].waitForExistence(timeout: 30))
         app.buttons["main-tab-profile"].tap()
-        app.buttons["Sign in"].tap()
+        app.buttons["profile-sign-in"].tap()
         let form = app.scrollViews["auth-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
         XCTAssertTrue(form.buttons["Sign in"].isHittable)
@@ -43,7 +43,7 @@ final class AuthCodeVisualUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["main-tab-profile"].waitForExistence(timeout: 30))
         app.buttons["main-tab-profile"].tap()
-        app.buttons["Sign in"].tap()
+        app.buttons["profile-sign-in"].tap()
         let form = app.scrollViews["auth-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["View your bookings and trip updates."].exists)
@@ -90,7 +90,7 @@ final class AuthCodeVisualUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["main-tab-profile"].waitForExistence(timeout: 30))
         app.buttons["main-tab-profile"].tap()
-        app.buttons["Sign in"].tap()
+        app.buttons["profile-sign-in"].tap()
         let form = app.scrollViews["auth-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
         XCTAssertLessThanOrEqual(app.buttons["Close"].frame.height, 48)
@@ -124,7 +124,7 @@ final class AuthCodeVisualUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["main-tab-profile"].waitForExistence(timeout: 30))
         app.buttons["main-tab-profile"].tap()
-        app.buttons["Sign in"].tap()
+        app.buttons["profile-sign-in"].tap()
         let form = app.scrollViews["auth-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
         // Native inset sheets scale their accessibility frames with sheet width.
@@ -158,8 +158,8 @@ final class AuthCodeVisualUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["main-tab-profile"].waitForExistence(timeout: 30))
         app.buttons["main-tab-profile"].tap()
-        XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 10))
-        app.buttons["Sign in"].tap()
+        XCTAssertTrue(app.buttons["profile-sign-in"].waitForExistence(timeout: 10))
+        app.buttons["profile-sign-in"].tap()
         XCTAssertTrue(app.buttons["Forgot password?"].waitForExistence(timeout: 10))
         app.buttons["Forgot password?"].tap()
         XCTAssertTrue(app.staticTexts["Reset password"].waitForExistence(timeout: 10))
