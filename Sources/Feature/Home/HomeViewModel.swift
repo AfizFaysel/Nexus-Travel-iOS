@@ -15,6 +15,7 @@ final class HomeViewModel {
     private var airportSearchGeneration = 0
     private var airportSearchTask: Task<[Airport], Error>?
     private var loadGeneration = 0
+    private var hasLoaded = false
 
     var currentDate: LocalDate { today() }
 
@@ -47,6 +48,10 @@ final class HomeViewModel {
             if generation == loadGeneration { uiState = previousState }
             throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                if generation == loadGeneration { uiState = previousState }
+                throw CancellationError()
+            }
             name = "Traveler"
         }
         uiState = HomeUiState(isLoading: true, userName: name, activeSheet: sheet, selectedService: service)
@@ -57,6 +62,10 @@ final class HomeViewModel {
             if generation == loadGeneration { uiState = previousState }
             throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                if generation == loadGeneration { uiState = previousState }
+                throw CancellationError()
+            }
             airports = []
         }
         let result: HomeResult<HomeContent>
@@ -66,6 +75,10 @@ final class HomeViewModel {
             if generation == loadGeneration { uiState = previousState }
             throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                if generation == loadGeneration { uiState = previousState }
+                throw CancellationError()
+            }
             result = .unknownError
         }
         let departure = today().addingDays(7)
@@ -75,7 +88,7 @@ final class HomeViewModel {
             uiState = HomeUiState(
                 isLoading: false, userName: name, origin: content.origin, destination: content.destination,
                 departureDate: departure, returnDate: departure?.addingDays(7), trendingEscapes: content.trendingEscapes,
-                recentSearches: content.recentSearches, airports: airports, activeSheet: sheet, selectedService: service,
+                airports: airports, activeSheet: sheet, selectedService: service,
                 loadPhase: content.trendingEscapes.isEmpty ? .empty : .content
             )
         case .networkUnavailable:
@@ -85,6 +98,12 @@ final class HomeViewModel {
             uiState = fallbackState(airports: airports, name: name,
                 message: "We could not load your home page. Please try again.", service: service, sheet: sheet)
         }
+        hasLoaded = true
+    }
+
+    func loadIfNeeded() async throws {
+        guard !hasLoaded else { return }
+        try await load()
     }
 
     func retry() async {
@@ -103,7 +122,6 @@ final class HomeViewModel {
             uiState.selectedService = .flight
             uiState.activeSheet = nil
         case .hotelClicked: open(.hotelComingSoon)
-        case .packageClicked: pendingNavigationEvents.append(.toPackages)
         case let .tripTypeChanged(type): uiState = uiState.settingTripType(type)
         case .originClicked: await openAirportSheet(.originAirport)
         case .destinationClicked: await openAirportSheet(.destinationAirport)
@@ -142,15 +160,7 @@ final class HomeViewModel {
             uiState.cabinClass = cabin
             uiState.activeSheet = nil
         case let .trendingEscapeClicked(escape):
-            uiState.destination = escape.airport
-            clearFeedback()
-            await searchFlights()
-        case let .recentSearchClicked(search):
-            let lookup = Dictionary(uniqueKeysWithValues: uiState.airports.map { ($0.code, $0) })
-            uiState.origin = lookup[search.originCode] ?? uiState.origin
-            uiState.destination = lookup[search.destinationCode] ?? uiState.destination
-            clearFeedback()
-            await searchFlights()
+            pendingNavigationEvents.append(.toDestinationDetail(destinationId: escape.id))
         case .searchClicked: await searchFlights()
         case .dismissSheet:
             uiState.activeSheet = nil
@@ -256,11 +266,20 @@ final class HomeViewModel {
             tripType: uiState.tripType, departureDate: date, returnDate: uiState.returnDate, today: today())
     }
 
+    func searchAgain() async -> String? {
+        await createSearch()
+    }
+
     private func searchFlights() async {
-        guard !uiState.isSearching else { return }
+        guard let searchId = await createSearch() else { return }
+        pendingNavigationEvents.append(.toSearchResults(searchId: searchId))
+    }
+
+    private func createSearch() async -> String? {
+        guard !uiState.isSearching else { return nil }
         if let error = searchValidator.validateSearch(state: uiState, today: today()) {
             uiState.validationError = error
-            return
+            return nil
         }
         let state = uiState
         let legs = state.tripType == .multiCity ? state.multiCityLegs.compactMap { leg -> FlightSearchLeg? in
@@ -275,23 +294,29 @@ final class HomeViewModel {
                 departureDate: departure, returnDate: state.tripType == .roundTrip ? state.returnDate : nil,
                 travelers: state.travelers, cabinClass: state.cabinClass, legs: legs,
                 childAges: state.childAges, infantAges: state.infantAges)
-        else { return }
+        else { return nil }
         uiState.isSearching = true
         uiState.validationError = nil
         uiState.message = nil
         do {
-            switch try await flightSearchRepository.createSearch(request: request) {
-            case let .success(searchId): pendingNavigationEvents.append(.toSearchResults(searchId: searchId))
+            let result = try await flightSearchRepository.createSearch(request: request)
+            guard !Task.isCancelled else { uiState.isSearching = false; return nil }
+            switch result {
+            case let .success(searchId):
+                uiState.isSearching = false
+                return searchId
             case .networkUnavailable: uiState.message = "We lost the connection. Try again."
-            case .unknownError: uiState.message = "No fares found for this route. Contact Nexus for help."
+            case .unknownError: uiState.message = "Could not check flights right now. Try again."
             }
         } catch is CancellationError {
             uiState.isSearching = false
-            return
+            return nil
         } catch {
-            uiState.message = "No fares found for this route. Contact Nexus for help."
+            guard !Task.isCancelled else { uiState.isSearching = false; return nil }
+            uiState.message = "Could not check flights right now. Try again."
         }
         uiState.isSearching = false
+        return nil
     }
 
     private func airport(matching code: String) async throws -> Airport? {

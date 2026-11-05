@@ -45,7 +45,7 @@ struct PassengerDetailsValidationTests {
             .errors(for: .dateOfBirth) == ["Enter a valid date of birth."])
         let todayDOB = validForm().withDateOfBirth(PassengerDateInput(day: "28", month: "5", year: "2026"))
         #expect(PassengerDetailsValidator.validate(form: todayDOB, details: try details(), today: try today())
-            .errors(for: .dateOfBirth).isEmpty)
+            .errors(for: .dateOfBirth) == ["Adult must be age 12 or older on departure."])
         let pastExpiry = validForm().withPassportExpiry(PassengerDateInput(day: "27", month: "5", year: "2026"))
         #expect(PassengerDetailsValidator.validate(form: pastExpiry, details: try details(), today: try today())
             .errors(for: .passportExpiry) == ["Passport expiry date cannot be in the past."])

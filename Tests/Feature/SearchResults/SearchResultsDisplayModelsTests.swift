@@ -1,7 +1,22 @@
+import CoreGraphics
 import Testing
 @testable import NexusTravel
 
 struct SearchResultsDisplayModelsTests {
+    @Test func rowMetricsMatchAndroidAcrossPhoneWidths() throws {
+        let compactSpacing = try #require(NexusAdaptiveSpacing(screenWidth: 360, screenHeight: 800))
+        let regularSpacing = try #require(NexusAdaptiveSpacing(screenWidth: 390, screenHeight: 844))
+        let spaciousSpacing = try #require(NexusAdaptiveSpacing(screenWidth: 430, screenHeight: 932))
+
+        #expect(SearchResultRowMetrics(maxWidth: 360, spacing: compactSpacing).values == [16, 0, 14, 40, 40, 26, 72])
+        #expect(SearchResultRowMetrics(maxWidth: 390, spacing: regularSpacing).values == [20, 0, 16, 44, 40, 30, 76])
+        #expect(SearchResultRowMetrics(maxWidth: 430, spacing: spaciousSpacing).values == [24, 4, 18, 48, 40, 30, 78])
+        #expect(SearchResultRowMetrics(maxWidth: 360, spacing: compactSpacing).usesCompactLabels)
+        #expect(!SearchResultRowMetrics(maxWidth: 390, spacing: regularSpacing).usesCompactLabels)
+        #expect(SearchResultRowMetrics(maxWidth: 360, spacing: compactSpacing).summaryCardMinHeight == 64)
+        #expect(SearchResultRowMetrics(maxWidth: 390, spacing: regularSpacing).summaryCardMinHeight == 70)
+    }
+
     @Test func mapsAllDisplayStringsAndLegs() throws {
         let offer = try makeOffer(price: -123, departure: "05:07", duration: 125, stops: [], reportedStops: 0, oldPrice: Money(amount: 150, currency: "USD", formatted: "USD 150"), seats: 3, badge: .lowestFare, inbound: true)
         let display = offer.toSearchResultUiOffer(tripType: .roundTrip)
@@ -64,5 +79,11 @@ struct SearchResultsDisplayModelsTests {
         let inboundLeg = inbound ? FlightLeg(departureAirportCode: "DXB", arrivalAirportCode: "ADD", departureTime: arrivalTime, arrivalTime: departureTime, durationMinutes: 120) : nil
         let reference = FlightOfferReference(searchId: "search", offerId: id, offerToken: "token", provider: .nexusFake, contentSource: nil, responseId: nil, productIds: [], termsAndConditionsId: nil, brandRef: nil, expiresAt: nil)
         return FlightOffer(id: id, reference: reference, airline: AirlineBrand(code: "ET", name: "Ethiopian"), flightNumber: "ET600", outbound: leg, inbound: inboundLeg, price: Money(amount: price, currency: "USD", formatted: "USD \(price)"), oldPrice: oldPrice, seatsLeft: seats, badge: badge)
+    }
+}
+
+private extension SearchResultRowMetrics {
+    var values: [CGFloat] {
+        [horizontalMargin, rowInnerPadding, rowVerticalPadding, logoSlotWidth, logoSlotHeight, legLabelWidth, endpointWidth]
     }
 }

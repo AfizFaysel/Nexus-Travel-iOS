@@ -2,7 +2,7 @@ import Foundation
 
 enum TripGroup: String, CaseIterable, Codable, Sendable {
     case actionRequired = "ACTION_REQUIRED", upcoming = "UPCOMING", past = "PAST", cancelled = "CANCELLED"
-    var label: String { switch self { case .actionRequired: "Action needed"; case .upcoming: "Upcoming"; case .past: "Past"; case .cancelled: "Cancelled" } }
+    var label: String { switch self { case .actionRequired: "In progress"; case .upcoming: "Upcoming"; case .past: "Past"; case .cancelled: "Cancelled" } }
 }
 
 struct CustomerTrip: Equatable, Sendable {

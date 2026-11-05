@@ -12,8 +12,21 @@ struct TripsUiState: Equatable, Sendable {
     private(set) var state = TripsUiState()
     private let repository: any TripsRepository; private let authRepository: any AuthRepository
     private var generation = 0
+    private var hasLoaded = false
     init(repository: any TripsRepository, authRepository: any AuthRepository) { self.repository = repository; self.authRepository = authRepository }
     func select(_ group: TripGroup) async throws { guard state.selectedGroup != group else { return }; state.selectedGroup = group; try await load(forceRefresh: false) }
+    func loadIfNeeded() async throws {
+        guard !hasLoaded else { return }
+        try await load()
+        hasLoaded = true
+    }
+
+    func clearForLogout() {
+        generation += 1
+        hasLoaded = false
+        state = TripsUiState(loading: false, access: .guest)
+    }
+
     func load(forceRefresh: Bool = false) async throws {
         generation += 1
         let request = generation
@@ -30,6 +43,10 @@ struct TripsUiState: Equatable, Sendable {
             throw CancellationError()
         } catch {
             guard request == generation else { return }
+            if Task.isCancelled {
+                state = prior
+                throw CancellationError()
+            }
             state = TripsUiState(
                 selectedGroup: prior.selectedGroup,
                 loading: false,
@@ -60,6 +77,10 @@ struct TripsUiState: Equatable, Sendable {
             throw CancellationError()
         } catch {
             guard request == generation else { return }
+            if Task.isCancelled {
+                state = prior
+                throw CancellationError()
+            }
             state = prior
             state.access = .authenticated
             state.loading = false

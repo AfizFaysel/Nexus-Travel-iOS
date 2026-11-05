@@ -13,6 +13,8 @@ struct FlightDetailsDisplayMapperTests {
         #expect(display.totalPrice == PriceDisplay(currency: "ETB", amount: "56,500", formatted: "ETB 56,500"))
         #expect(display.legs.map(\.label) == ["Outbound", "Return"])
         #expect(display.legs[0].date == "Mon, Jun 1")
+        #expect(display.legs[0].departureAirportName == "Bole")
+        #expect(display.legs[0].arrivalAirportName == "Dubai")
         #expect(display.legs[0].departureTime == "12:05 am")
         #expect(display.legs[0].arrivalTime == "12:00 pm")
         #expect(display.legs[0].duration == "0h 0m")
@@ -32,6 +34,31 @@ struct FlightDetailsDisplayMapperTests {
         #expect(exact.totalPrice.amount == "46,332.46")
         #expect(exact.warning == nil)
         #expect(mismatch.totalPrice.amount == "KES 100")
+    }
+
+    @Test func stickyPriceNeverRepeatsCurrency() throws {
+        let price = Money(amount: 5_060_497, currency: "ETB", formatted: "ETB ETB 50,604.97")
+        let display = try makeDetails(price: price).toDisplayModel()
+        #expect(display.totalPrice.currency == "ETB")
+        #expect(display.totalPrice.amount == "50,604.97")
+        let noBreakSpaces = Money(amount: 5_060_497, currency: "ETB", formatted: "ETB\u{00A0}ETB\u{00A0}50,604.97")
+        #expect(try makeDetails(price: noBreakSpaces).toDisplayModel().totalPrice.amount == "50,604.97")
+    }
+
+    @Test func timelineShowsOnlyDurationBetweenAirportCodes() throws {
+        let date = try #require(LocalDate(year: 2026, month: 6, day: 1))
+        let departure = try #require(LocalTime(hour: 5, minute: 0))
+        let arrival = try #require(LocalTime(hour: 10, minute: 30))
+        let segment = FlightDetailsSegment(departureAirportCode: "ADD", arrivalAirportCode: "DXB", layoverMinutes: nil,
+            departureTime: departure, arrivalTime: arrival, durationMinutes: 270,
+            marketingAirlineName: "flydubai", flightNumber: "FZ642", equipment: "7M8")
+        let leg = FlightDetailsLeg(label: "Outbound", date: date, departureAirportCode: "ADD", departureAirportName: "ADD",
+            arrivalAirportCode: "DXB", arrivalAirportName: "DXB", departureTime: departure, arrivalTime: arrival,
+            durationMinutes: 270, stopLabel: "Non-stop", segments: [segment])
+        let display = try makeDetails(legs: [leg]).toDisplayModel()
+        #expect(display.legs[0].segments[0].detail == "4h 30m")
+        #expect(display.legs[0].segments[0].departureTime == "5:00 am")
+        #expect(display.legs[0].segments[0].arrivalTime == "10:30 am")
     }
 
     @Test func mapsEveryAirlineAssetAndFallback() throws {

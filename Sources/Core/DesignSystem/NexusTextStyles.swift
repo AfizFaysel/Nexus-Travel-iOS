@@ -194,6 +194,13 @@ extension View {
     }
 }
 
+/// Auth-scoped hierarchy; shared typography and other screens remain unchanged.
+enum NexusAuthTypography {
+    static let sheetTitle = NexusTextStyle(
+        fontWeight: .bold, baseSize: 28, baseLineHeight: 36, relativeTo: .title
+    )
+}
+
 private struct NexusTextStyleModifier: ViewModifier {
     let style: NexusTextStyle
 

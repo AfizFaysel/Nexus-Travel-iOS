@@ -11,10 +11,10 @@ extension FlightDetails {
             dateTravelerMeta: "\(dateRangeLabel) · \(travelers.summary())",
             totalPrice: PriceDisplay(
                 currency: price.currency,
-                amount: price.formatted.removingPrefix("\(price.currency) "),
+                amount: price.formatted.removingRepeatedCurrencyPrefix(price.currency),
                 formatted: price.formatted
             ),
-            legs: legs.map(\.display),
+            legs: legs.map { $0.display(flightNumber: flightNumber, cabinLabel: cabinLabel) },
             warning: warningMessage.map(FlightDetailsWarningDisplay.init(message:))
         )
     }
@@ -26,7 +26,7 @@ extension FlightDetails {
 }
 
 private extension FlightDetailsLeg {
-    var display: FlightLegDisplay {
+    func display(flightNumber: String, cabinLabel: String) -> FlightLegDisplay {
         FlightLegDisplay(
             label: label,
             date: date.weekdayMonthDay,
@@ -37,8 +37,28 @@ private extension FlightDetailsLeg {
             departureTime: departureTime.twelveHour,
             arrivalTime: arrivalTime.twelveHour,
             duration: "\(durationMinutes / 60)h \(durationMinutes % 60)m",
-            stopLabel: stopLabel
+            stopLabel: stopLabel,
+            segments: segments.isEmpty
+                ? [FlightSegmentDisplay(departureAirportCode: departureAirportCode, arrivalAirportCode: arrivalAirportCode,
+                    departureTime: departureTime.twelveHour, arrivalTime: arrivalTime.twelveHour,
+                    detail: durationMinutes > 0 ? "\(durationMinutes / 60)h \(durationMinutes % 60)m" : "Duration unavailable",
+                    layover: nil)]
+                : segments.map { $0.display(fallbackFlightNumber: flightNumber) }
         )
+    }
+}
+
+private extension FlightDetailsSegment {
+    func display(fallbackFlightNumber: String) -> FlightSegmentDisplay {
+        let detail = durationMinutes > 0
+            ? [durationMinutes / 60 > 0 ? "\(durationMinutes / 60)h" : nil,
+               durationMinutes % 60 > 0 ? "\(durationMinutes % 60)m" : nil]
+                .compactMap { $0 }.joined(separator: " ")
+            : "Duration unavailable"
+        let layover = layoverMinutes.map { "\($0 / 60)h \($0 % 60)m layover in \(arrivalAirportCode)" }
+        return FlightSegmentDisplay(departureAirportCode: departureAirportCode, arrivalAirportCode: arrivalAirportCode,
+            departureTime: departureTime?.twelveHour ?? "", arrivalTime: arrivalTime?.twelveHour ?? "",
+            detail: detail, layover: layover)
     }
 }
 
@@ -83,5 +103,15 @@ private extension LocalTime {
 private extension String {
     func removingPrefix(_ prefix: String) -> String {
         hasPrefix(prefix) ? String(dropFirst(prefix.count)) : self
+    }
+
+    func removingRepeatedCurrencyPrefix(_ currency: String) -> String {
+        var amount = trimmingCharacters(in: .whitespacesAndNewlines)
+        while amount.hasPrefix(currency) {
+            let remainder = amount.dropFirst(currency.count)
+            guard remainder.first?.isWhitespace == true else { break }
+            amount = String(remainder.drop(while: { $0.isWhitespace }))
+        }
+        return amount
     }
 }

@@ -21,6 +21,16 @@ struct SearchResultsViewModelTests {
         #expect(model.uiState.resultCountLabel() == "1 flight found")
     }
 
+    @Test func unavailableOfferIsRemovedWithoutResettingSearchPreferences() async throws {
+        let model = makeModel(result: .success(querySummary: try summary(), offers: [try offer(id: "stale"), try offer(id: "good")]))
+        try await model.loadResults()
+        await model.onEvent(.sortChanged(.bestPrice))
+        model.markOfferUnavailable(try offer(id: "stale").reference)
+        #expect(model.uiState.visibleFlights.map(\.id) == ["good"])
+        #expect(model.uiState.sortOption == .bestPrice)
+        #expect(model.uiState.unavailableOfferNotice != nil)
+    }
+
     @Test(arguments: [
         (SearchResultsResult.empty, SearchResultsState.empty, nil),
         (.networkUnavailable, .error, "Connection lost. Check your network and retry."),
@@ -144,6 +154,29 @@ struct SearchResultsViewModelTests {
         #expect(model.consumeNavigationEvent() == .toNearbyDates)
         #expect(model.consumeNavigationEvent() == .toFlightDetails(reference))
         #expect(model.consumeNavigationEvent() == nil)
+    }
+
+    @Test func expiredOfferCannotOpenFlightDetails() async throws {
+        let model = makeModel(result: .empty)
+        let original = try offer(id: "expired").reference
+        let expired = FlightOfferReference(
+            searchId: original.searchId, offerId: original.offerId, offerToken: original.offerToken,
+            provider: original.provider, contentSource: original.contentSource, responseId: original.responseId,
+            productIds: original.productIds, termsAndConditionsId: original.termsAndConditionsId,
+            brandRef: original.brandRef, expiresAt: .distantPast
+        )
+        await model.onEvent(.flightCardClicked(expired))
+        #expect(model.consumeNavigationEvent() == nil)
+        #expect(model.uiState.unavailableOfferNotice?.contains("expired") == true)
+    }
+
+    @Test func resultFreshnessWarningUsesOfferExpiry() async throws {
+        var state = SearchResultsUiState()
+        let offer = try offer(id: "soon").toSearchResultUiOffer(tripType: .oneWay)
+        state.visibleFlights = [offer]
+        let expiry = try #require(offer.reference.expiresAt)
+        #expect(state.freshnessWarning(at: expiry.addingTimeInterval(-60)) != nil)
+        #expect(state.freshnessWarning(at: expiry.addingTimeInterval(-600)) == nil)
     }
 
     private func makeModel(result: SearchResultsResult) -> SearchResultsViewModel {

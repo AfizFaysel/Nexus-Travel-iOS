@@ -35,6 +35,17 @@ struct FlightLegDisplay: Equatable, Sendable {
     let arrivalTime: String
     let duration: String
     let stopLabel: String
+    let segments: [FlightSegmentDisplay]
+}
+
+/// Display-ready segment for a vertical flight timeline.
+struct FlightSegmentDisplay: Equatable, Sendable {
+    let departureAirportCode: String
+    let arrivalAirportCode: String
+    let departureTime: String
+    let arrivalTime: String
+    let detail: String
+    let layover: String?
 }
 
 /// Non-fatal warning shown with flight details.

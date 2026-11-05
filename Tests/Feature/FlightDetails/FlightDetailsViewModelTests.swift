@@ -22,6 +22,7 @@ struct FlightDetailsViewModelTests {
         FlightDetailsResult.offerExpired,
         .offerUnavailable,
         .networkUnavailable,
+        .confirmationUnavailable,
         .authRequired,
         .unknownError
     ])
@@ -36,6 +37,34 @@ struct FlightDetailsViewModelTests {
 
         #expect(!model.uiState.isLoading)
         #expect(model.uiState.errorMessage != nil)
+        #expect(model.uiState.canRetryLoad == (result == .networkUnavailable || result == .confirmationUnavailable || result == .unknownError))
+    }
+
+    @Test func unavailableOnContinueInvalidatesStaleFare() async throws {
+        let details = try makeDetails()
+        let repository = SequencedFlightDetailsRepository(results: [.success(details: details), .offerUnavailable])
+        let model = FlightDetailsViewModel(reference: details.reference, repository: repository)
+        try await model.load()
+        try await model.onEvent(.continueClicked)
+        #expect(model.uiState.details == nil)
+        #expect(model.uiState.errorMessage != nil)
+        #expect(!model.uiState.canRetryLoad)
+        #expect(model.consumeNavigationEvent() == nil)
+    }
+
+    @Test func temporaryFailureKeepsFareButRequiresFreshConfirmation() async throws {
+        let details = try makeDetails()
+        let repository = SequencedFlightDetailsRepository(results: [.success(details: details), .confirmationUnavailable, .offerUnavailable])
+        let model = FlightDetailsViewModel(reference: details.reference, repository: repository)
+        try await model.load()
+        try await model.onEvent(.continueClicked)
+        #expect(model.uiState.details == details)
+        #expect(model.uiState.requiresRevalidation)
+        #expect(model.consumeNavigationEvent() == nil)
+        try await model.onEvent(.retryClicked)
+        #expect(model.uiState.details == nil)
+        #expect(model.uiState.errorMessage != nil)
+        #expect(await repository.callCount == 3)
     }
 
     @Test func retryLoadsNextResult() async throws {
@@ -119,6 +148,39 @@ struct FlightDetailsViewModelTests {
         #expect(model.uiState == FlightDetailsUiState())
     }
 
+    @Test func priceChangedOnOpenStillRequiresConsentAfterContinueRecheck() async throws {
+        let details = try makeDetails()
+        let previous = Money(amount: 50_000, currency: "ETB", formatted: "ETB 50,000")
+        let repository = SequencedFlightDetailsRepository(results: [
+            .priceChanged(previousTotal: previous, updatedDetails: details),
+            .success(details: details)
+        ])
+        let model = FlightDetailsViewModel(reference: details.reference, repository: repository)
+        try await model.load()
+        try await model.onEvent(.continueClicked)
+        #expect(model.uiState.pendingPriceChange != nil)
+        #expect(model.consumeNavigationEvent() == nil)
+        try await model.onEvent(.acceptPriceChangeClicked)
+        #expect(model.consumeNavigationEvent() == .toPassengerDetails)
+    }
+
+    @Test func laterFailureInvalidatesPendingPriceAcceptance() async throws {
+        let details = try makeDetails()
+        let previous = Money(amount: 50_000, currency: "ETB", formatted: "ETB 50,000")
+        let repository = SequencedFlightDetailsRepository(results: [
+            .success(details: details),
+            .priceChanged(previousTotal: previous, updatedDetails: details),
+            .offerExpired
+        ])
+        let model = FlightDetailsViewModel(reference: details.reference, repository: repository)
+        try await model.load()
+        try await model.onEvent(.continueClicked)
+        try await model.onEvent(.retryClicked)
+        try await model.onEvent(.acceptPriceChangeClicked)
+        #expect(model.consumeNavigationEvent() == nil)
+        #expect(model.uiState.canReturnToResults)
+    }
+
     @Test func unexpectedLoadFailureStopsLoading() async {
         let details = try? makeDetails()
         guard let details else {
@@ -134,6 +196,7 @@ struct FlightDetailsViewModelTests {
 
         #expect(!model.uiState.isLoading)
         #expect(model.uiState.errorMessage != nil)
+        #expect(model.uiState.canRetryLoad)
     }
 }
 

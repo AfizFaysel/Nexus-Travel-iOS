@@ -57,7 +57,7 @@ enum HomeService: Equatable, Hashable, Codable, Sendable { case flight }
 enum HomeLoadPhase: Equatable, Hashable, Codable, Sendable { case loading, content, empty, error }
 
 enum HomeUiEvent: Equatable, Sendable {
-    case flightClicked, hotelClicked, packageClicked
+    case flightClicked, hotelClicked
     case tripTypeChanged(TripType)
     case originClicked, destinationClicked, swapAirportsClicked
     case departureDateClicked, returnDateClicked, travelersClicked, cabinClassClicked
@@ -67,13 +67,13 @@ enum HomeUiEvent: Equatable, Sendable {
     case multiCityDateSelected(index: Int, date: LocalDate), addMultiCityLeg, removeMultiCityLeg(index: Int)
     case travelersChanged(TravelerCounts, childAges: [Int], infantAges: [Int])
     case cabinClassChanged(CabinClass)
-    case trendingEscapeClicked(TrendingEscape), recentSearchClicked(RecentSearch)
+    case trendingEscapeClicked(TrendingEscape)
     case searchClicked, dismissSheet, clearValidationError
 }
 
 enum HomeNavigationEvent: Equatable, Sendable {
     case toSearchResults(searchId: String)
-    case toPackages
+    case toDestinationDetail(destinationId: String)
 }
 
 /// Presentation-independent home fields needed by search validation and multi-city transitions.
@@ -91,7 +91,6 @@ struct HomeUiState: Equatable, Hashable, Codable, Sendable {
     var cabinClass: CabinClass
     var multiCityLegs: [MultiCityLegUiState]
     var trendingEscapes: [TrendingEscape]
-    var recentSearches: [RecentSearch]
     var airports: [Airport]
     var airportQuery: String
     var activeSheet: HomeSheet?
@@ -116,7 +115,6 @@ struct HomeUiState: Equatable, Hashable, Codable, Sendable {
         cabinClass: CabinClass = .economy,
         multiCityLegs: [MultiCityLegUiState] = [],
         trendingEscapes: [TrendingEscape] = [],
-        recentSearches: [RecentSearch] = [],
         airports: [Airport] = [],
         airportQuery: String = "",
         activeSheet: HomeSheet? = nil,
@@ -139,7 +137,6 @@ struct HomeUiState: Equatable, Hashable, Codable, Sendable {
         self.cabinClass = cabinClass
         self.multiCityLegs = multiCityLegs
         self.trendingEscapes = trendingEscapes
-        self.recentSearches = recentSearches
         self.airports = airports
         self.airportQuery = airportQuery
         self.activeSheet = activeSheet
@@ -182,7 +179,6 @@ struct HomeUiState: Equatable, Hashable, Codable, Sendable {
             cabinClass: cabinClass,
             multiCityLegs: multiCityLegs,
             trendingEscapes: trendingEscapes,
-            recentSearches: recentSearches,
             airports: airports,
             airportQuery: airportQuery,
             activeSheet: activeSheet,

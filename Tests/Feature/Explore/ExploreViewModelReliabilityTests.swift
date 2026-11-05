@@ -3,6 +3,57 @@ import Testing
 
 @MainActor
 struct ExploreViewModelReliabilityTests {
+    @Test func destinationSearchCreatesDisplayedRoundTripAndReturnsSearchID() async throws {
+        let flights = RecordingFlightSearchRepository(result: .success(searchId: "search-42"))
+        let today = try #require(LocalDate(iso8601: "2026-09-20"))
+        let viewModel = ExploreDetailViewModel(
+            repository: ImmediateExploreRepository(),
+            flightSearchRepository: flights,
+            today: { today }
+        )
+
+        let departure = try #require(LocalDate(iso8601: "2026-09-24"))
+        let returning = try #require(LocalDate(iso8601: "2026-09-30"))
+        let searchID = await viewModel.searchFlights(to: "DXB", departureDate: departure, returnDate: returning, travelers: TravelerCounts(adults: 3))
+        let request = await flights.lastRequest
+
+        #expect(searchID == "search-42")
+        #expect(request?.tripType == .roundTrip)
+        #expect(request?.originCode == "ADD")
+        #expect(request?.destinationCode == "DXB")
+        #expect(request?.departureDate == departure)
+        #expect(request?.returnDate == returning)
+        #expect(request?.travelers == TravelerCounts(adults: 3))
+        #expect(request?.cabinClass == .economy)
+        #expect(viewModel.searchError == nil)
+        #expect(!viewModel.isSearching)
+    }
+
+    @Test(arguments: ["DXB", "IST", "NBO"])
+    func destinationSearchUsesSelectedAirportCode(_ code: String) async throws {
+        let flights = RecordingFlightSearchRepository(result: .success(searchId: "search-42"))
+        let today = try #require(LocalDate(iso8601: "2026-09-20"))
+        let departure = try #require(LocalDate(iso8601: "2026-09-24"))
+        let returning = try #require(LocalDate(iso8601: "2026-09-30"))
+        let viewModel = ExploreDetailViewModel(repository: ImmediateExploreRepository(), flightSearchRepository: flights, today: { today })
+
+        _ = await viewModel.searchFlights(to: code, departureDate: departure, returnDate: returning, travelers: TravelerCounts(adults: 3))
+
+        #expect(await flights.lastRequest?.destinationCode == code)
+    }
+
+    @Test func loadIfNeededKeepsContentWithoutDuplicateRequest() async throws {
+        let repository = ImmediateExploreRepository()
+        let viewModel = ExploreViewModel(repository: repository)
+
+        try await viewModel.loadIfNeeded()
+        try await viewModel.loadIfNeeded()
+
+        let callCount = await repository.callCount
+        #expect(viewModel.state.content != nil)
+        #expect(callCount == 1)
+    }
+
     @Test func cancelledOlderLoadDoesNotOverwriteNewerContent() async throws {
         let repository = ControlledExploreRepository()
         let viewModel = ExploreViewModel(repository: repository)
@@ -20,6 +71,30 @@ struct ExploreViewModelReliabilityTests {
         #expect(viewModel.state.content == content)
         #expect(!viewModel.state.loading)
     }
+}
+
+private actor RecordingFlightSearchRepository: FlightSearchRepository {
+    let result: FlightSearchResult
+    private(set) var lastRequest: FlightSearchRequest?
+
+    init(result: FlightSearchResult) { self.result = result }
+
+    func createSearch(request: FlightSearchRequest) async throws -> FlightSearchResult {
+        lastRequest = request
+        return result
+    }
+}
+
+private actor ImmediateExploreRepository: ExploreRepository {
+    private(set) var callCount = 0
+
+    func content(forceRefresh: Bool) async throws -> ExploreResult<ExploreContent> {
+        callCount += 1
+        return .success(ExploreContent(banners: [], destinations: [], packages: []))
+    }
+
+    func destination(id: String) async throws -> ExploreResult<ExploreDestinationDetail> { .failed }
+    func travelPackage(id: String) async throws -> ExploreResult<ExplorePackageDetail> { .failed }
 }
 
 private actor ControlledExploreRepository: ExploreRepository {

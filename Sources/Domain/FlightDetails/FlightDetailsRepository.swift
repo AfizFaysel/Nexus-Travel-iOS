@@ -11,6 +11,7 @@ enum FlightDetailsResult: Equatable, Sendable {
     case offerExpired
     case offerUnavailable
     case networkUnavailable
+    case confirmationUnavailable
     case authRequired
     case unknownError
 }

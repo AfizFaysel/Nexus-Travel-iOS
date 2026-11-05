@@ -32,6 +32,8 @@ enum FlightDetailsErrorPresenter {
             nil
         case .networkUnavailable:
             FlightDetailsErrorUi(title: "Connection lost", message: "Check your network and retry.", primaryAction: .retry)
+        case .confirmationUnavailable:
+            FlightDetailsErrorUi(title: "Fare not confirmed", message: "We couldn’t confirm this fare. Try again.", primaryAction: .retry)
         case .unknownError:
             FlightDetailsErrorUi(title: "Could not load flight details", message: "Try again.", primaryAction: .retry)
         case .offerExpired:

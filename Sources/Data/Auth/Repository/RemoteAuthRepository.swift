@@ -29,7 +29,7 @@ struct RemoteAuthRepository: AuthRepository {
         return try await authenticate(path: AuthEndpoints.signInEmail, body: body)
     }
 
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> {
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> {
         let validation = AuthValidator.validateSignUp(request: request)
         guard validation.isEmpty else { return .failure(.validation(validation)) }
         let body = SignUpEmailRequestDTO(
@@ -37,7 +37,26 @@ struct RemoteAuthRepository: AuthRepository {
             password: request.password,
             name: request.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
         )
-        return try await authenticate(path: AuthEndpoints.signUpEmail, body: body)
+        let response = try await send(request: self.request(path: AuthEndpoints.signUpEmail, method: .post, body: body))
+        guard case let .success(value) = response else {
+            return try await mappedFailure(from: response)
+        }
+        let envelope: AuthTokenEnvelopeDTO
+        do {
+            envelope = try JSONDecoder().decode(AuthTokenEnvelopeDTO.self, from: value.data)
+        } catch {
+            return .failure(.unknown)
+        }
+        guard envelope.token?.isEmpty == false || value.headers["set-auth-token"]?.isEmpty == false else {
+            return .success(.verificationPending(email: envelope.user.email))
+        }
+        do {
+            let session = try AuthMapper.session(from: envelope, responseHeaderToken: value.headers["set-auth-token"], now: clock())
+            try await sessionStore.write(StoredAuthSession(session: session))
+            return .success(.authenticated(session))
+        } catch AuthMappingError.missingToken {
+            return .failure(.unauthenticated)
+        }
     }
 
     func getSession() async throws -> AuthResult<AuthSession> {
@@ -96,6 +115,83 @@ struct RemoteAuthRepository: AuthRepository {
             body: PasswordResetRequestDTO(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
         )
         return try await unitResult(for: request)
+    }
+
+    func resendVerificationEmail(email: String) async throws -> AuthResult<Void> {
+        let validation = AuthValidator.validatePasswordReset(email: email)
+        guard validation.isEmpty else { return .failure(.validation(validation)) }
+        let request = try request(
+            path: AuthEndpoints.resendVerificationEmail,
+            method: .post,
+            body: PasswordResetRequestDTO(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+        )
+        return try await unitResult(for: request)
+    }
+
+    func verifyEmail(token: String) async throws -> AuthResult<Void> {
+        guard AuthLinkRoute.accepts(token: token) else { return .failure(.unknown) }
+        return try await unitResult(for: HTTPRequest(
+            target: .root(AuthEndpoints.verifyEmail),
+            queryItems: [URLQueryItem(name: "token", value: token)]
+        ))
+    }
+
+    func resetPassword(token: String, newPassword: String) async throws -> AuthResult<Void> {
+        guard AuthLinkRoute.accepts(token: token) else { return .failure(.unknown) }
+        if let error = AuthValidator.validateNewPassword(newPassword) {
+            return .failure(.validation([.password: error]))
+        }
+        let request = try request(
+            path: AuthEndpoints.passwordReset,
+            method: .post,
+            body: PasswordUpdateDTO(token: token, newPassword: newPassword)
+        )
+        let result = try await unitResult(for: request)
+        if case .success = result { try await sessionStore.clear() }
+        return result
+    }
+
+    func sendVerificationCode(email: String) async throws -> AuthResult<Void> {
+        let validation = AuthValidator.validatePasswordReset(email: email)
+        guard validation.isEmpty else { return .failure(.validation(validation)) }
+        return try await unitResult(for: request(
+            path: AuthEndpoints.sendVerificationCode,
+            method: .post,
+            body: VerificationCodeRequestDTO(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+        ))
+    }
+
+    func verifyEmailCode(email: String, code: String) async throws -> AuthResult<Void> {
+        guard code.count == 6, code.allSatisfy(\.isNumber) else { return .failure(.invalidCode) }
+        return try await unitResult(for: request(
+            path: AuthEndpoints.verifyEmailCode,
+            method: .post,
+            body: VerifyEmailCodeDTO(email: email.trimmingCharacters(in: .whitespacesAndNewlines), otp: code)
+        ))
+    }
+
+    func requestPasswordResetCode(email: String) async throws -> AuthResult<Void> {
+        let validation = AuthValidator.validatePasswordReset(email: email)
+        guard validation.isEmpty else { return .failure(.validation(validation)) }
+        return try await unitResult(for: request(
+            path: AuthEndpoints.requestPasswordResetCode,
+            method: .post,
+            body: PasswordResetRequestDTO(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+        ))
+    }
+
+    func resetPasswordCode(email: String, code: String, newPassword: String) async throws -> AuthResult<Void> {
+        guard code.count == 6, code.allSatisfy(\.isNumber) else { return .failure(.invalidCode) }
+        if let error = AuthValidator.validateNewPassword(newPassword) {
+            return .failure(.validation([.password: error]))
+        }
+        let result = try await unitResult(for: request(
+            path: AuthEndpoints.resetPasswordCode,
+            method: .post,
+            body: ResetPasswordCodeDTO(email: email.trimmingCharacters(in: .whitespacesAndNewlines), otp: code, password: newPassword)
+        ))
+        if case .success = result { try await sessionStore.clear() }
+        return result
     }
 
     func signOut() async throws -> AuthResult<Void> {

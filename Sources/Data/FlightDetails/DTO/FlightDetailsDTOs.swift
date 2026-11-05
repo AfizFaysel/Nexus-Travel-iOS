@@ -23,6 +23,7 @@ struct FlightDetailsDTO: Decodable, Sendable {
     let cabinClass: String
     let airlineName: String?
     let airlineLogoKey: String?
+    let airlineLogoUrl: String?
     let flightNumber: String
     let badge: String?
     let price: MoneyDTO
@@ -40,7 +41,22 @@ struct FlightDetailsDTO: Decodable, Sendable {
 struct MoneyDTO: Decodable, Sendable { let amount: Int; let currency: String; let formatted: String }
 struct SearchWarningDTO: Decodable, Sendable { let code: String; let message: String }
 struct FareAvailabilityDTO: Decodable, Sendable { let status: String; let remainingSeats: Int? }
-struct BaggageSummaryDTO: Decodable, Sendable { let cabin: String; let checked: String; let included: Bool; let detail: String }
+struct BaggageSummaryDTO: Decodable, Sendable {
+    let cabin: String
+    let checked: String
+    let included: Bool
+    let detail: String
+    let allowances: [BaggageAllowanceDTO]?
+}
+struct BaggageAllowanceDTO: Decodable, Sendable {
+    let baggageType: String?
+    let inclusion: String?
+    let quantity: Int?
+    let weight: BaggageWeightDTO?
+    let passengerTypeCodes: [String]?
+    let segmentSequences: [Int]?
+}
+struct BaggageWeightDTO: Decodable, Sendable { let unit: String; let value: Double }
 struct FareRuleSectionDTO: Decodable, Sendable { let title: String; let items: [String] }
 struct FareRulesSummaryDTO: Decodable, Sendable {
     let refundableLabel: String; let changeLabel: String; let cancellationLabel: String; let sections: [FareRuleSectionDTO]

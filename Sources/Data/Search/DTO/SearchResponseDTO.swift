@@ -20,7 +20,7 @@ struct SearchOfferDTO: Decodable, Sendable {
     let itinerary: SearchItineraryDTO?
 }
 
-struct SearchAirlineDTO: Decodable, Sendable { let name: String?; let logoKey: String? }
+struct SearchAirlineDTO: Decodable, Sendable { let name: String?; let logoKey: String?; let logoUrl: String? }
 struct SearchFareAvailabilityDTO: Decodable, Sendable { let status: String; let remainingSeats: Int? }
 
 struct SearchItineraryDTO: Decodable, Sendable {

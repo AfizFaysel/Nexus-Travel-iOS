@@ -8,8 +8,15 @@ struct ProfileUiState: Equatable, Sendable { var access: ProfileAccessState = .l
     private let repository: any ProfileRepository
     private let authRepository: any AuthRepository
     private var loadGeneration = 0
+    private var hasLoaded = false
 
     init(repository: any ProfileRepository, authRepository: any AuthRepository) { self.repository = repository; self.authRepository = authRepository }
+
+    func loadIfNeeded() async throws {
+        guard !hasLoaded else { return }
+        try await load()
+        hasLoaded = true
+    }
 
     func load() async throws {
         loadGeneration += 1
@@ -41,11 +48,16 @@ struct ProfileUiState: Equatable, Sendable { var access: ProfileAccessState = .l
             throw CancellationError()
         } catch {
             guard request == loadGeneration else { return }
+            if Task.isCancelled {
+                state = prior
+                throw CancellationError()
+            }
             state = ProfileUiState(access: .recoverableError(cached))
         }
     }
 
     func requestLogout() { state.showLogoutConfirmation = true }; func dismissLogout() { state.showLogoutConfirmation = false }
+    func clearForPasswordReset() { state = ProfileUiState(access: .guest); hasLoaded = false }
     func signOut() async throws {
         guard !state.signingOut else { return }
         loadGeneration += 1
@@ -55,6 +67,7 @@ struct ProfileUiState: Equatable, Sendable { var access: ProfileAccessState = .l
         do {
             _ = try await authRepository.signOut()
             state = ProfileUiState(access: .guest)
+            hasLoaded = false
         } catch is CancellationError {
             state = prior
             throw CancellationError()

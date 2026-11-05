@@ -97,7 +97,7 @@ struct AuthViewModelTests {
         #expect(login.loginState.password.isEmpty)
         #expect(login.consumeEvent() == .authenticated(session))
 
-        let signup = AuthViewModel(repository: StubAuthRepository(signUpResult: .success(session)))
+        let signup = AuthViewModel(repository: StubAuthRepository(signUpResult: .success(.authenticated(session))))
         signup.updateSignupName("Selam Abebe")
         signup.updateSignupEmail("selam@example.com")
         signup.updateSignupPassword("password123")
@@ -112,41 +112,270 @@ struct AuthViewModelTests {
 
     @Test func passwordResetValidatesThenReportsBackendFailureHonestly() async throws {
         let model = AuthViewModel(repository: StubAuthRepository(resetResult: .failure(.unknown)))
-        model.updateLoginEmail("bad")
+        model.startPasswordCodeFlow()
+        model.updatePasswordCodeEmail("bad")
         try await model.requestPasswordReset()
-        #expect(model.loginState.emailError == "Please enter a valid email address.")
+        #expect(model.passwordCodeState.emailError == "Please enter a valid email address.")
+        model.updatePasswordCodeEmail("selam@example.com")
+        try await model.requestPasswordReset()
+        #expect(model.passwordCodeState.message == "We couldn’t confirm whether a code was sent. Check your inbox before requesting another.")
+        #expect(model.passwordCodeState.messageIsError)
+        #expect(model.passwordCodeState.step == .request)
+    }
+
+    @Test func signupWithoutSessionEntersVerificationPendingWithoutAuthenticatedEvent() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(signUpResult: .success(.verificationPending(email: "selam@example.com"))))
+        model.updateSignupName("Selam Abebe")
+        model.updateSignupEmail("selam@example.com")
+        model.updateSignupPassword("password123")
+        model.updateSignupConfirmPassword("password123")
+        model.updateTerms(true)
+
+        try await model.submitSignup()
+
+        #expect(model.gateState == .verificationPending(email: "selam@example.com"))
+        #expect(model.consumeEvent() == nil)
+        #expect(model.signupState.password.isEmpty)
+        #expect(model.signupState.confirmPassword.isEmpty)
+    }
+
+    @Test func unverifiedLoginUsesPendingStateAndCanResendWithoutDisclosingAddress() async throws {
+        let repository = StubAuthRepository(signInResult: .failure(.emailNotVerified))
+        let model = AuthViewModel(repository: repository)
         model.updateLoginEmail("selam@example.com")
+        model.updateLoginPassword("password123")
+
+        try await model.submitLogin()
+        await model.resendVerificationEmail()
+
+        #expect(model.gateState == .verificationPending(email: "selam@example.com"))
+        #expect(model.loginState.password.isEmpty)
+        #expect(model.verificationMessage == "Use the newest code you requested.")
+        #expect(model.consumeEvent() == nil)
+    }
+
+    @Test func verificationCodeNeedsExplicitSubmitAndDoesNotCreateSession() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            signUpResult: .success(.verificationPending(email: "selam@example.com")),
+            verifyCodeResult: .success(())
+        ))
+        model.showSignup()
+        model.updateSignupName("Selam Abebe")
+        model.updateSignupEmail("selam@example.com")
+        model.updateSignupPassword("password123")
+        model.updateSignupConfirmPassword("password123")
+        model.updateTerms(true)
+        try await model.submitSignup()
+        model.updateVerificationCode("123456")
+        #expect(model.gateState == .verificationPending(email: "selam@example.com"))
+        try await model.submitVerificationCode()
+        #expect(model.verificationSucceeded)
+        #expect(model.verificationMessage == "Email verified.")
+        model.finishVerificationFeedback()
+        #expect(model.mode == .login)
+        #expect(model.gateState == .unauthenticated)
+        #expect(model.consumeEvent() == nil)
+        #expect(model.verificationCode.isEmpty)
+    }
+
+    @Test func leavingSignupVerificationReturnsToSignIn() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            signUpResult: .success(.verificationPending(email: "selam@example.com"))
+        ))
+        model.showSignup()
+        model.updateSignupName("Selam Abebe")
+        model.updateSignupEmail("selam@example.com")
+        model.updateSignupPassword("password123")
+        model.updateSignupConfirmPassword("password123")
+        model.updateTerms(true)
+        try await model.submitSignup()
+        model.showSignInForPendingVerification()
+        #expect(model.mode == .login)
+        #expect(model.gateState == .unauthenticated)
+    }
+
+    @Test func invalidVerificationCodeRemainsEditable() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            signInResult: .failure(.emailNotVerified),
+            verifyCodeResult: .failure(.invalidCode)
+        ))
+        model.updateLoginEmail("selam@example.com")
+        model.updateLoginPassword("password123")
+        try await model.submitLogin()
+        model.updateVerificationCode("123456")
+        try await model.submitVerificationCode()
+        #expect(model.verificationCodeError?.contains("newest code") == true)
+        #expect(model.gateState == .verificationPending(email: "selam@example.com"))
+        model.updateVerificationCode("654321")
+        #expect(model.verificationCodeError == nil)
+    }
+
+    @Test func successfulResendClearsStaleCodeError() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            signInResult: .failure(.emailNotVerified),
+            verifyCodeResult: .failure(.expiredCode)
+        ))
+        model.updateLoginEmail("selam@example.com")
+        model.updateLoginPassword("password123")
+        try await model.submitLogin()
+        model.updateVerificationCode("123456")
+        try await model.submitVerificationCode()
+        #expect(model.verificationCodeError != nil)
+
+        await model.resendVerificationEmail()
+
+        #expect(model.verificationCode.isEmpty)
+        #expect(model.verificationCodeError == nil)
+        #expect(model.verificationMessage == "Use the newest code you requested.")
+        #expect(!model.verificationMessageIsError)
+    }
+
+    @Test func exhaustedVerificationCodeRequiresResend() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            signInResult: .failure(.emailNotVerified),
+            verifyCodeResult: .failure(.tooManyCodeAttempts)
+        ))
+        model.updateLoginEmail("selam@example.com")
+        model.updateLoginPassword("password123")
+        try await model.submitLogin()
+        model.updateVerificationCode("123456")
+        try await model.submitVerificationCode()
+        #expect(model.verificationRequiresNewCode)
+        #expect(model.verificationCode.isEmpty)
+        model.updateVerificationCode("654321")
+        #expect(model.verificationCode.isEmpty)
+
+        await model.resendVerificationEmail()
+        #expect(!model.verificationRequiresNewCode)
+        #expect(model.verificationCodeError == nil)
+    }
+
+    @Test func resetCodeThenPasswordUsesOneFinalSubmission() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            resetResult: .success(()), updatePasswordResult: .success(())
+        ))
+        model.startPasswordCodeFlow()
+        model.updatePasswordCodeEmail("selam@example.com")
         try await model.requestPasswordReset()
-        #expect(model.loginState.message == "Something went wrong. Please try again.")
-        #expect(!model.loginState.isSuccess)
+        #expect(model.passwordCodeState.step == .code)
+        model.updatePasswordCode("123456")
+        model.continuePasswordReset()
+        #expect(model.passwordCodeState.step == .password)
+        model.updatePasswordCodePassword("newpassword123")
+        model.updatePasswordCodeConfirmation("newpassword123")
+        try await model.submitPasswordCodeReset()
+        #expect(model.passwordCodeState.step == .complete)
+        #expect(model.passwordCodeState.code.isEmpty)
+        #expect(model.passwordCodeState.password.isEmpty)
+        #expect(model.consumeEvent() == nil)
+    }
+
+    @Test func resetNetworkLossHasUncertainOutcomeAndClearsSecrets() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            resetResult: .success(()), updatePasswordResult: .failure(.networkUnavailable)
+        ))
+        model.startPasswordCodeFlow()
+        model.updatePasswordCodeEmail("selam@example.com")
+        try await model.requestPasswordReset()
+        model.updatePasswordCode("123456")
+        model.continuePasswordReset()
+        model.updatePasswordCodePassword("newpassword123")
+        model.updatePasswordCodeConfirmation("newpassword123")
+        try await model.submitPasswordCodeReset()
+        #expect(model.passwordCodeState.step == .uncertain)
+        #expect(model.passwordCodeState.code.isEmpty)
+        #expect(model.passwordCodeState.password.isEmpty)
+    }
+
+    @Test func resetPasswordValidationStaysOnPasswordStep() async throws {
+        let model = AuthViewModel(repository: StubAuthRepository(
+            resetResult: .success(()),
+            updatePasswordResult: .failure(.validation([.password: "Password is too long."]))
+        ))
+        model.startPasswordCodeFlow()
+        model.updatePasswordCodeEmail("selam@example.com")
+        try await model.requestPasswordReset()
+        model.updatePasswordCode("123456")
+        model.continuePasswordReset()
+        model.updatePasswordCodePassword("newpassword123")
+        model.updatePasswordCodeConfirmation("newpassword123")
+        try await model.submitPasswordCodeReset()
+
+        #expect(model.passwordCodeState.step == .password)
+        #expect(model.passwordCodeState.passwordError == "Password is too long.")
+        #expect(model.passwordCodeState.codeError == nil)
+        #expect(model.passwordCodeState.code == "123456")
+    }
+
+    @Test func passwordResetValidTokenClearsFormAndRoutesToSignIn() async {
+        let model = AuthViewModel(repository: StubAuthRepository(updatePasswordResult: .success(())))
+        await model.openAuthLink(.resetPassword(token: "reset-token"))
+        model.updateResetPassword("newpassword123")
+        model.updateResetPasswordConfirmation("newpassword123")
+
+        await model.submitPasswordReset()
+
+        #expect(model.authLinkState == .resetComplete)
+        #expect(model.passwordResetState.password.isEmpty)
+        #expect(model.passwordResetState.confirmPassword.isEmpty)
+    }
+
+    @Test func passwordResetOfflineKeepsLinkForRetry() async {
+        let model = AuthViewModel(repository: StubAuthRepository(updatePasswordResult: .failure(.networkUnavailable)))
+        await model.openAuthLink(.resetPassword(token: "reset-token"))
+        model.updateResetPassword("newpassword123")
+        model.updateResetPasswordConfirmation("newpassword123")
+
+        await model.submitPasswordReset()
+
+        #expect(model.authLinkState == .resetForm)
+        #expect(!model.passwordResetState.isSubmitting)
+        #expect(model.passwordResetState.message?.contains("Check your connection") == true)
+    }
+
+    @Test func expiredPasswordResetTokenClearsCredentialsAndExplainsRecovery() async {
+        let model = AuthViewModel(repository: StubAuthRepository(updatePasswordResult: .failure(.unauthenticated)))
+        await model.openAuthLink(.resetPassword(token: "expired-token"))
+        model.updateResetPassword("newpassword123")
+        model.updateResetPasswordConfirmation("newpassword123")
+
+        await model.submitPasswordReset()
+
+        #expect(model.authLinkState == .resetFailed)
+        #expect(model.passwordResetState.password.isEmpty)
+        #expect(model.passwordResetState.confirmPassword.isEmpty)
+        #expect(model.passwordResetState.message?.contains("expired or already been used") == true)
     }
 
     @Test func passwordResetUnexpectedErrorStopsLoading() async {
         let model = AuthViewModel(repository: ThrowingPasswordResetRepository())
-        model.updateLoginEmail("selam@example.com")
+        model.startPasswordCodeFlow()
+        model.updatePasswordCodeEmail("selam@example.com")
 
         do {
             try await model.requestPasswordReset()
             Issue.record("Expected password reset to throw")
         } catch {}
 
-        #expect(!model.loginState.isSubmitting)
-        #expect(model.loginState.message == "Something went wrong. Please try again.")
+        #expect(!model.passwordCodeState.isSubmitting)
+        #expect(model.passwordCodeState.message == "Couldn’t send a code. Try again.")
     }
 }
 
 private struct StubAuthRepository: AuthRepository {
     var signInResult: AuthResult<AuthSession> = .failure(.unknown)
-    var signUpResult: AuthResult<AuthSession> = .failure(.unknown)
+    var signUpResult: AuthResult<AuthSignUpResult> = .failure(.unknown)
     var sessionResult: AuthResult<AuthSession> = .failure(.unauthenticated)
     var resetResult: AuthResult<Void> = .failure(.unknown)
+    var updatePasswordResult: AuthResult<Void> = .failure(.unknown)
+    var verifyCodeResult: AuthResult<Void> = .failure(.unknown)
     var throwsOnSessionCheck = false
     var throwsOnSubmission = false
     func signInEmail(request: SignInRequest) async throws -> AuthResult<AuthSession> {
         if throwsOnSubmission { throw StubAuthError.submissionFailed }
         return signInResult
     }
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> {
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> {
         if throwsOnSubmission { throw StubAuthError.submissionFailed }
         return signUpResult
     }
@@ -156,6 +385,12 @@ private struct StubAuthRepository: AuthRepository {
     }
     func getLocalSession() async throws -> AuthSession? { nil }
     func requestPasswordReset(email: String) async throws -> AuthResult<Void> { resetResult }
+    func requestPasswordResetCode(email: String) async throws -> AuthResult<Void> { resetResult }
+    func verifyEmailCode(email: String, code: String) async throws -> AuthResult<Void> { verifyCodeResult }
+    func resetPasswordCode(email: String, code: String, newPassword: String) async throws -> AuthResult<Void> { updatePasswordResult }
+    func sendVerificationCode(email: String) async throws -> AuthResult<Void> { .success(()) }
+    func resendVerificationEmail(email: String) async throws -> AuthResult<Void> { .success(()) }
+    func resetPassword(token: String, newPassword: String) async throws -> AuthResult<Void> { updatePasswordResult }
     func signOut() async throws -> AuthResult<Void> { .success(()) }
 }
 
@@ -163,17 +398,18 @@ private enum StubAuthError: Error { case sessionCheckFailed, submissionFailed }
 
 private struct ThrowingPasswordResetRepository: AuthRepository {
     func signInEmail(request: SignInRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> { .failure(.unknown) }
     func getSession() async throws -> AuthResult<AuthSession> { .failure(.unauthenticated) }
     func getLocalSession() async throws -> AuthSession? { nil }
     func requestPasswordReset(email: String) async throws -> AuthResult<Void> { throw StubAuthError.submissionFailed }
+    func requestPasswordResetCode(email: String) async throws -> AuthResult<Void> { throw StubAuthError.submissionFailed }
     func signOut() async throws -> AuthResult<Void> { .success(()) }
 }
 
 private actor AuthRepositorySpy: AuthRepository {
     private(set) var signUpCallCount = 0
     func signInEmail(request: SignInRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> {
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> {
         signUpCallCount += 1
         return .failure(.unknown)
     }

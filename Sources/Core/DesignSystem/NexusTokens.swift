@@ -192,12 +192,43 @@ enum NexusLayout {
     static let touchMin: CGFloat = 44
     static let touchRecommended: CGFloat = 48
     static let bottomCtaMinHeight: CGFloat = 88
+    static let stickyCtaButtonWidthCompact: CGFloat = 144
+    static let stickyCtaButtonWidthRegular: CGFloat = 164
+    static let stickyCtaButtonWidthSpacious: CGFloat = 180
     static let mainBottomBarHeight: CGFloat = 78
     static let iconDefault: CGFloat = 24
     static let iconSmall: CGFloat = 20
     static let iconLarge: CGFloat = 32
     static let contentMaxWidth: CGFloat = 480
+    static let homeContentMaxWidthWide: CGFloat = 720
+    static let homeWideLayoutMinimumWidth: CGFloat = 700
     static let formMaxWidth: CGFloat = 360
+    static let authCodeMaxWidth: CGFloat = 384
+    static let authCodeSheetInitialHeight: CGFloat = 480
+    static let homeChoiceSheetInitialHeight: CGFloat = 320
+    static let exploreCardMinWidth: CGFloat = 144
+    static let exploreCardMaxWidth: CGFloat = 188
+    static let exploreDetailHeroCompactHeight: CGFloat = 240
+    static let exploreDetailHeroRegularHeight: CGFloat = 280
+    static let exploreDetailHeroSpaciousHeight: CGFloat = 320
+}
+
+/// Responsive geometry used by Android and iOS search-result rows.
+enum NexusSearchResultLayout {
+    static let summaryCardHeightCompact: CGFloat = 64
+    static let summaryCardHeightRegular: CGFloat = 70
+    static let rowVerticalPaddingCompact: CGFloat = 14
+    static let rowVerticalPaddingRegular: CGFloat = 16
+    static let rowVerticalPaddingSpacious: CGFloat = 18
+    static let logoSlotWidthCompact: CGFloat = 40
+    static let logoSlotWidthRegular: CGFloat = 44
+    static let logoSlotWidthSpacious: CGFloat = 48
+    static let logoSlotHeight: CGFloat = 40
+    static let legLabelWidthCompact: CGFloat = 26
+    static let legLabelWidthRegular: CGFloat = 30
+    static let endpointWidthCompact: CGFloat = 72
+    static let endpointWidthRegular: CGFloat = 76
+    static let endpointWidthSpacious: CGFloat = 78
 }
 
 /// iOS shadow values approximating Android surface elevation.
@@ -222,6 +253,7 @@ enum NexusBorder {
 enum NexusIconSize {
     static let xs: CGFloat = 16
     static let sm: CGFloat = 20
+    static let formField: CGFloat = 22
     static let md: CGFloat = 24
     static let lg: CGFloat = 32
     static let xl: CGFloat = 40

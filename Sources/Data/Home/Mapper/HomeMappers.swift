@@ -6,27 +6,18 @@ enum AirportMapper {
 
 enum HomeContentMapper {
     static func map(_ dto: ExploreHomeDTO, origin: Airport, destination fallbackDestination: Airport) -> HomeContent {
-        let escapes = dto.packages.enumerated().map { index, package in
-            let destination = dto.destinations.indices.contains(index) ? dto.destinations[index] : nil
-            return TrendingEscape(
-                id: package.id,
+        let escapes = dto.destinations.map { destination in
+            TrendingEscape(
+                id: destination.id,
                 airport: Airport(
-                    code: destination?.airportCode ?? fallbackDestination.code,
-                    city: destination?.city ?? fallbackDestination.city,
-                    name: destination?.title ?? package.title,
-                    country: destination?.country ?? fallbackDestination.country
+                    code: destination.airportCode ?? fallbackDestination.code,
+                    city: destination.city,
+                    name: destination.title,
+                    country: destination.country
                 ),
-                tags: [package.summary],
-                startingPrice: Money(amount: 0, currency: package.currency, formatted: ""),
-                imageName: destination?.imageUrl ?? ""
-            )
-        }
-        let recents = dto.destinations.prefix(3).map {
-            RecentSearch(
-                id: $0.id,
-                originCode: origin.code,
-                destinationCode: $0.airportCode ?? fallbackDestination.code,
-                dateRange: $0.summary
+                tags: [destination.summary],
+                startingPrice: Money(amount: 0, currency: "", formatted: ""),
+                imageName: destination.imageUrl ?? ""
             )
         }
         return HomeContent(
@@ -36,8 +27,7 @@ enum HomeContentMapper {
             returnDate: "Add return",
             travelersLabel: "1 Adult",
             cabinClass: "Economy",
-            trendingEscapes: escapes,
-            recentSearches: recents
+            trendingEscapes: escapes
         )
     }
 }

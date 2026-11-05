@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// Display snapshot for search results.
 struct SearchResultsDisplayState: Equatable, Sendable {
@@ -26,6 +27,7 @@ struct SearchResultUiOffer: Equatable, Sendable {
     let reference: FlightOfferReference
     let airlineCode: String
     let airlineName: String
+    let airlineLogoURL: URL?
     let flightNumber: String
     let outbound: SearchResultUiLeg
     let inbound: SearchResultUiLeg?
@@ -46,6 +48,7 @@ struct SearchResultUiOffer: Equatable, Sendable {
     /// Returns copy with current booking-request status label.
     func withBookingStatus(label: String?) -> SearchResultUiOffer {
         SearchResultUiOffer(id: id, reference: reference, airlineCode: airlineCode, airlineName: airlineName,
+            airlineLogoURL: airlineLogoURL,
             flightNumber: flightNumber, outbound: outbound, inbound: inbound, legs: legs,
             priceAmount: priceAmount, priceLabel: priceLabel, oldPriceLabel: oldPriceLabel,
             priceMetaLabel: priceMetaLabel, priceDigitCount: priceDigitCount, seatsLeftLabel: seatsLeftLabel,
@@ -74,6 +77,7 @@ extension FlightOffer {
         let displayLegs = legs.map { $0.toSearchResultUiLeg() }
         return SearchResultUiOffer(
             id: id, reference: reference, airlineCode: airline.code, airlineName: airline.name,
+            airlineLogoURL: airline.logoURL,
             flightNumber: flightNumber, outbound: outbound.toSearchResultUiLeg(),
             inbound: inbound?.toSearchResultUiLeg(), legs: displayLegs, priceAmount: price.amount,
             priceLabel: price.formatted.removingPrefix("\(price.currency) "),
@@ -151,5 +155,51 @@ private extension Comparable {
         if self < other { return .orderedAscending }
         if other < self { return .orderedDescending }
         return .orderedSame
+    }
+}
+
+/// Android-mirrored responsive geometry for one search-result row.
+struct SearchResultRowMetrics: Equatable {
+    let usesCompactLabels: Bool
+    let summaryCardMinHeight: CGFloat
+    let summaryHorizontalPadding: CGFloat
+    let horizontalMargin: CGFloat
+    let rowInnerPadding: CGFloat
+    let rowVerticalPadding: CGFloat
+    let logoSlotWidth: CGFloat
+    let logoSlotHeight: CGFloat
+    let legLabelWidth: CGFloat
+    let endpointWidth: CGFloat
+
+    init(maxWidth: CGFloat, spacing: NexusAdaptiveSpacing) {
+        let isSmallWidth = maxWidth <= 360
+        let isNormalWidth = maxWidth > 360 && maxWidth <= 400
+
+        usesCompactLabels = isSmallWidth
+        summaryCardMinHeight = isSmallWidth
+            ? NexusSearchResultLayout.summaryCardHeightCompact
+            : NexusSearchResultLayout.summaryCardHeightRegular
+        summaryHorizontalPadding = isSmallWidth ? NexusSpacing.space12 : NexusSpacing.space16
+        horizontalMargin = switch spacing.mode {
+        case .compact: NexusSpacing.space16
+        case .regular: NexusSpacing.space20
+        case .spacious: NexusSpacing.space24
+        }
+        rowInnerPadding = spacing.mode == .spacious ? NexusSpacing.space4 : NexusSpacing.space0
+        rowVerticalPadding = switch spacing.mode {
+        case .compact: NexusSearchResultLayout.rowVerticalPaddingCompact
+        case .regular: NexusSearchResultLayout.rowVerticalPaddingRegular
+        case .spacious: NexusSearchResultLayout.rowVerticalPaddingSpacious
+        }
+        logoSlotWidth = isSmallWidth
+            ? NexusSearchResultLayout.logoSlotWidthCompact
+            : (isNormalWidth ? NexusSearchResultLayout.logoSlotWidthRegular : NexusSearchResultLayout.logoSlotWidthSpacious)
+        logoSlotHeight = NexusSearchResultLayout.logoSlotHeight
+        legLabelWidth = isSmallWidth
+            ? NexusSearchResultLayout.legLabelWidthCompact
+            : NexusSearchResultLayout.legLabelWidthRegular
+        endpointWidth = isSmallWidth
+            ? NexusSearchResultLayout.endpointWidthCompact
+            : (isNormalWidth ? NexusSearchResultLayout.endpointWidthRegular : NexusSearchResultLayout.endpointWidthSpacious)
     }
 }

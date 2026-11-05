@@ -116,6 +116,12 @@ public enum AuthError: Equatable, Sendable {
     case networkUnavailable
     /// Authentication attempts exceeded the allowed rate.
     case rateLimited
+    /// Submitted email code does not match.
+    case invalidCode
+    /// Submitted email code has expired.
+    case expiredCode
+    /// Submitted email code has exhausted allowed attempts.
+    case tooManyCodeAttempts
     /// No authenticated session exists.
     case unauthenticated
     /// Existing authentication session expired.

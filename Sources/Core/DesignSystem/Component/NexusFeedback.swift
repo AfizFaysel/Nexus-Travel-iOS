@@ -124,3 +124,39 @@ extension NexusBanner where LeadingContent == EmptyView {
         self.trailingAction = trailingAction
     }
 }
+
+/// Status-colored feedback with optional recovery actions.
+struct NexusFeedbackPanel: View {
+    let title: String
+    let message: String
+    var status: NexusStatus = .error
+    var primaryActionLabel: String?
+    var onPrimaryAction: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: NexusSpacing.space16) {
+            HStack(alignment: .top, spacing: NexusSpacing.space12) {
+                NexusIcon(name: status == .error ? .error : .info, size: NexusIconSize.sm)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+                    Text(title).nexusTextStyle(NexusText.styles.listTitle)
+                    Text(message).nexusTextStyle(NexusText.styles.bodySmall)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let primaryActionLabel, let onPrimaryAction {
+                NexusPrimaryButton(primaryActionLabel, fillsWidth: true, action: onPrimaryAction)
+            }
+        }
+        .foregroundStyle(status.colors.content)
+        .padding(NexusSpacing.space16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(status.colors.container)
+        .clipShape(RoundedRectangle(cornerRadius: NexusRadius.lg))
+        .overlay {
+            RoundedRectangle(cornerRadius: NexusRadius.lg)
+                .stroke(status.colors.border, lineWidth: NexusBorder.hairline)
+        }
+        .accessibilityElement(children: .contain)
+    }
+}

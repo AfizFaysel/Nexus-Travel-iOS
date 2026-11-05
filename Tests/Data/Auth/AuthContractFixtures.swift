@@ -9,6 +9,10 @@ enum AuthContractFixtures {
 
     static let tokenEnvelopeWithoutToken = Data(#"{"user":{"id":"user-1","name":"Selam","email":"selam@example.com","emailVerified":true,"image":null}}"#.utf8)
 
+    static let signupPending = Data(#"{"token":null,"user":{"id":"user-1","name":"Selam","email":"selam@example.com","emailVerified":false,"image":null}}"#.utf8)
+
+    static let signupTokenForUnverifiedUser = Data(#"{"token":"must-not-store","user":{"id":"user-1","name":"Selam","email":"selam@example.com","emailVerified":false,"image":null}}"#.utf8)
+
     static let tokenEnvelopeMissingUser = Data(#"{"token":"body-token"}"#.utf8)
 
     static let sessionEnvelope = Data(#"{"session":{"id":"session-1","userId":"user-1","token":"session-token","expiresAt":"2026-09-04T12:00:00.000Z","createdAt":"2026-08-28T12:00:00Z","updatedAt":"2026-08-28T12:00:00Z"},"user":{"id":"user-1","name":"Selam","email":"selam@example.com","emailVerified":true,"image":null}}"#.utf8)

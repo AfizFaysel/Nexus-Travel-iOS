@@ -15,7 +15,7 @@ struct HomeViewModelTests {
 
     @Test func loadSuccessUsesGreetingDatesAndContent() async throws {
         let content = HomeContent(origin: add, destination: dxb, departureDate: "ignored", returnDate: "ignored",
-                                  travelersLabel: "ignored", cabinClass: "ignored", trendingEscapes: [], recentSearches: [])
+                                  travelersLabel: "ignored", cabinClass: "ignored", trendingEscapes: [])
         let model = makeModel(homeResult: .success(content), displayName: "  Afiz Mohamed  ")
 
         try await model.load()
@@ -49,9 +49,19 @@ struct HomeViewModelTests {
         #expect(model.uiState.activeSheet == .originAirport)
     }
 
+    @Test func loadIfNeededKeepsEditedFormStateAfterInitialLoad() async throws {
+        let model = makeModel()
+
+        try await model.loadIfNeeded()
+        await model.onEvent(.tripTypeChanged(.roundTrip))
+        try await model.loadIfNeeded()
+
+        #expect(model.uiState.tripType == .roundTrip)
+    }
+
     @Test func retryReplacesLoadErrorWithContent() async throws {
         let content = HomeContent(origin: add, destination: dxb, departureDate: "", returnDate: "",
-                                  travelersLabel: "", cabinClass: "", trendingEscapes: [], recentSearches: [])
+                                  travelersLabel: "", cabinClass: "", trendingEscapes: [])
         let repository = RetryHomeRepository(results: [.unknownError, .success(content)])
         let model = HomeViewModel(
             homeRepository: repository,
@@ -113,7 +123,7 @@ struct HomeViewModelTests {
     @Test func staleAirportResponseCannotOverwriteLatestQuery() async throws {
         let repository = ControllableAirportRepository(popular: [add, dxb])
         let content = HomeContent(origin: add, destination: dxb, departureDate: "", returnDate: "",
-                                  travelersLabel: "", cabinClass: "", trendingEscapes: [], recentSearches: [])
+                                  travelersLabel: "", cabinClass: "", trendingEscapes: [])
         let model = HomeViewModel(
             homeRepository: StubHomeRepository(result: .success(content)),
             airportRepository: repository,
@@ -133,15 +143,107 @@ struct HomeViewModelTests {
         #expect(model.uiState.airports == [dxb])
     }
 
-    @Test func packagesAndSuccessfulSearchEmitTypedNavigationOnce() async throws {
+    @Test func successfulSearchEmitsTypedNavigationOnce() async throws {
         let model = makeModel(searchResult: .success(searchId: "search-42"))
         try await model.load()
-        await model.onEvent(.packageClicked)
-        #expect(model.consumeNavigationEvent() == .toPackages)
-        #expect(model.consumeNavigationEvent() == nil)
         await model.onEvent(.searchClicked)
         #expect(model.consumeNavigationEvent() == .toSearchResults(searchId: "search-42"))
+        #expect(model.consumeNavigationEvent() == nil)
         #expect(!model.uiState.isSearching)
+    }
+
+    @Test func searchAgainUsesSavedCriteriaAndReturnsNewSearchId() async throws {
+        let repository = RequestSpySearchRepository()
+        let model = makeModel(searchRepository: repository)
+        try await model.load()
+        await model.onEvent(.tripTypeChanged(.roundTrip))
+        await model.onEvent(.travelersChanged(TravelerCounts(adults: 2, children: 1, infants: 1),
+                                               childAges: [8], infantAges: [1]))
+        await model.onEvent(.cabinClassChanged(.business))
+
+        let searchId = await model.searchAgain()
+        let capturedRequest = await repository.lastRequest
+        let request = try #require(capturedRequest)
+
+        #expect(searchId == "search-spy")
+        #expect(request.tripType == .roundTrip)
+        #expect(request.originCode == "ADD")
+        #expect(request.destinationCode == "DXB")
+        #expect(request.returnDate == today.addingDays(14))
+        #expect(request.travelers == TravelerCounts(adults: 2, children: 1, infants: 1))
+        #expect(request.childAges == [8])
+        #expect(request.infantAges == [1])
+        #expect(request.cabinClass == .business)
+        #expect(model.consumeNavigationEvent() == nil)
+        #expect(!model.uiState.isSearching)
+    }
+
+    @Test func searchAgainShowsLoadingAndOnlyReturnsIdAfterSuccess() async throws {
+        let repository = BlockingSearchRepository()
+        let model = makeModel(searchRepository: repository)
+        try await model.load()
+
+        let task = Task { await model.searchAgain() }
+        await repository.waitUntilStarted()
+
+        #expect(model.uiState.isSearching)
+        #expect(model.consumeNavigationEvent() == nil)
+        await repository.finish()
+        #expect(await task.value == "search-blocked")
+        #expect(!model.uiState.isSearching)
+    }
+
+    @Test func searchAgainPreservesOrderedMultiCityCriteria() async throws {
+        let repository = RequestSpySearchRepository()
+        let model = makeModel(searchRepository: repository)
+        try await model.load()
+        await model.onEvent(.tripTypeChanged(.multiCity))
+        await model.onEvent(.multiCityDestinationClicked(index: 1))
+        await model.onEvent(.airportSelected(add))
+        await model.onEvent(.travelersChanged(TravelerCounts(adults: 2, children: 1, infants: 0),
+                                               childAges: [8], infantAges: []))
+        await model.onEvent(.cabinClassChanged(.business))
+
+        let searchId = await model.searchAgain()
+        let capturedRequest = await repository.lastRequest
+        let request = try #require(capturedRequest)
+
+        #expect(searchId == "search-spy")
+        #expect(request.tripType == .multiCity)
+        #expect(request.legs.map(\.originCode) == ["ADD", "DXB"])
+        #expect(request.legs.map(\.destinationCode) == ["DXB", "ADD"])
+        #expect(request.travelers == TravelerCounts(adults: 2, children: 1, infants: 0))
+        #expect(request.childAges == [8])
+        #expect(request.cabinClass == .business)
+        #expect(model.consumeNavigationEvent() == nil)
+    }
+
+    @Test func failedSearchAgainDoesNotReturnOrNavigateToOldResults() async throws {
+        let model = makeModel(searchResult: .networkUnavailable)
+        try await model.load()
+
+        let searchId = await model.searchAgain()
+
+        #expect(searchId == nil)
+        #expect(model.uiState.message == "We lost the connection. Try again.")
+        #expect(model.consumeNavigationEvent() == nil)
+    }
+
+    @Test func featuredDestinationOpensItsDetailWithoutStartingFlightSearch() async throws {
+        let searchRepository = RequestSpySearchRepository()
+        let model = makeModel(searchRepository: searchRepository)
+        let escape = TrendingEscape(
+            id: "destination-dubai",
+            airport: dxb,
+            tags: ["City highlights"],
+            startingPrice: Money(amount: 0, currency: "", formatted: ""),
+            imageName: "https://example.com/dubai.jpg"
+        )
+
+        await model.onEvent(.trendingEscapeClicked(escape))
+
+        #expect(model.consumeNavigationEvent() == .toDestinationDetail(destinationId: "destination-dubai"))
+        #expect(await searchRepository.lastRequest == nil)
     }
 
     @Test func oneWaySearchBuildsExactRequestShape() async throws {
@@ -207,7 +309,7 @@ struct HomeViewModelTests {
 
     @Test(arguments: [
         (FlightSearchResult.networkUnavailable, "We lost the connection. Try again."),
-        (.unknownError, "No fares found for this route. Contact Nexus for help.")
+        (.unknownError, "Could not check flights right now. Try again.")
     ])
     func searchFailureShowsExactMessage(_ result: FlightSearchResult, _ message: String) async throws {
         let model = makeModel(searchResult: result)
@@ -232,7 +334,7 @@ struct HomeViewModelTests {
     @Test func cancellingAirportSearchCancelsRepositoryWorkAndPreventsMutation() async throws {
         let repository = CancellationAwareAirportRepository(popular: [add, dxb])
         let content = HomeContent(origin: add, destination: dxb, departureDate: "", returnDate: "",
-                                  travelersLabel: "", cabinClass: "", trendingEscapes: [], recentSearches: [])
+                                  travelersLabel: "", cabinClass: "", trendingEscapes: [])
         let model = HomeViewModel(
             homeRepository: StubHomeRepository(result: .success(content)),
             airportRepository: repository,
@@ -257,7 +359,7 @@ struct HomeViewModelTests {
         displayName: String? = nil
     ) -> HomeViewModel {
         let content = HomeContent(origin: add, destination: dxb, departureDate: "", returnDate: "",
-                                  travelersLabel: "", cabinClass: "", trendingEscapes: [], recentSearches: [])
+                                  travelersLabel: "", cabinClass: "", trendingEscapes: [])
         return HomeViewModel(
             homeRepository: StubHomeRepository(result: homeResult ?? .success(content)),
             airportRepository: StubAirportRepository(airports: [add, dxb]),
@@ -269,7 +371,7 @@ struct HomeViewModelTests {
 
     private func makeModel(searchRepository: any FlightSearchRepository) -> HomeViewModel {
         let content = HomeContent(origin: add, destination: dxb, departureDate: "", returnDate: "",
-                                  travelersLabel: "", cabinClass: "", trendingEscapes: [], recentSearches: [])
+                                  travelersLabel: "", cabinClass: "", trendingEscapes: [])
         return HomeViewModel(
             homeRepository: StubHomeRepository(result: .success(content)),
             airportRepository: StubAirportRepository(airports: [add, dxb]),
@@ -413,7 +515,7 @@ private struct StubAuthRepository: AuthRepository {
                            email: "a@example.com", avatarUrl: nil), tokens: nil, expiresAt: .distantFuture)
     }
     func signInEmail(request: SignInRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> { .failure(.unknown) }
     func getSession() async throws -> AuthResult<AuthSession> { .failure(.unauthenticated) }
     func requestPasswordReset(email: String) async throws -> AuthResult<Void> { .failure(.unknown) }
     func signOut() async throws -> AuthResult<Void> { .success(()) }

@@ -30,6 +30,6 @@ Deployed 2026-08-28 blocker: `/request-password-reset` returns `400 RESET_PASSWO
 
 ## TDD/exclusions
 
-Tests-only RED then minimum GREEN. Cover routes/method/auth/body trimming; validation no-call; token precedence/missing; fixed-clock fallback; timestamp formats; null/additive/missing JSON; full error/status/network/cancellation matrix; persistence/failure; usable/expired/equal/blank local sessions; clearing rules; signout clear on success/failure; disabled reset fixture.
+Tests-only RED then minimum GREEN. Cover routes/method/auth/body trimming; validation no-call; token precedence/missing; fixed-clock fallback; timestamp formats; null/additive/missing JSON; full error/status/network/cancellation matrix; persistence/failure; usable/expired/equal/blank local sessions; clearing rules; signout clear on success/failure; generic password-reset request response.
 
 Exclude social auth, refresh, cookies, retry/backoff, ViewModel/screens/navigation, account deletion, backend edits, demo credentials, dependencies.

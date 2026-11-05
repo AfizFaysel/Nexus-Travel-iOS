@@ -3,7 +3,7 @@ import Observation
 struct SeatSelectionUiState: Equatable, Sendable {
     var loading = true; var saving = false; var segments: [SeatMapSegment] = []
     var activeSegmentIndex = 0; var activePassengerIndex = 0; let passengerCount: Int
-    var assignments: [SeatAssignment] = []; var message: String?
+    var assignments: [SeatAssignment] = []; var message: String?; var canRetryLoad = false
 }
 enum SeatSelectionNavigation: Equatable, Sendable { case back, review(String) }
 
@@ -20,11 +20,19 @@ final class SeatSelectionViewModel {
     }
 
     func load() async throws {
-        state.loading = true; state.message = nil
+        state.loading = true; state.message = nil; state.canRetryLoad = false
         switch try await repository.load(bookingId: bookingId) {
         case let .success(map):
             state.loading = false; state.segments = map.segments
-            if map.segments.isEmpty { state.message = "Seat selection is unavailable. Airline can assign seats." }
+            state.canRetryLoad = map.availability == .temporarilyUnavailable
+            if map.segments.isEmpty {
+                state.message = state.canRetryLoad
+                    ? "Seat map temporarily unavailable. You can continue without choosing seats."
+                    : "Seat selection is unavailable. Airline can assign seats."
+            }
+        case .temporarilyUnavailable:
+            state.loading = false; state.canRetryLoad = true
+            state.message = "Seat map unavailable. You can continue without choosing seats."
         case .offerUnavailable:
             state.loading = false; state.message = "This fare is no longer available. Choose another flight."
         default:
@@ -54,7 +62,7 @@ final class SeatSelectionViewModel {
     func consumeNavigation() -> SeatSelectionNavigation? { navigation.isEmpty ? nil : navigation.removeFirst() }
 
     private func persist(clear: Bool) async throws {
-        state.saving = true; state.message = nil
+        state.saving = true; state.message = nil; state.canRetryLoad = false
         let result = try await (clear ? repository.clear(bookingId: bookingId) :
                                 repository.save(bookingId: bookingId, assignments: state.assignments))
         switch result {

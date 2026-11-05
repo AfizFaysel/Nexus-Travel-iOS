@@ -29,7 +29,6 @@ struct HomeModelsTests {
         #expect(state.cabinClass == .economy)
         #expect(state.multiCityLegs.isEmpty)
         #expect(state.trendingEscapes.isEmpty)
-        #expect(state.recentSearches.isEmpty)
         #expect(state.airports.isEmpty)
         #expect(state.airportQuery.isEmpty)
         #expect(state.validationError == nil)

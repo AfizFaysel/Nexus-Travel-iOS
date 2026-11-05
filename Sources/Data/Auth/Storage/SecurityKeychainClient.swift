@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Security
 
 /// Keychain accessibility choices supported by session persistence.
@@ -37,6 +38,9 @@ struct SecurityKeychainClient: KeychainClient {
         case errSecItemNotFound:
             return nil
         default:
+            Logger(subsystem: "com.nexustravel.NexusTravel", category: "Auth").error(
+                "Keychain read failed status=\(status, privacy: .public)"
+            )
             throw KeychainError(status: status)
         }
     }

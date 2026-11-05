@@ -27,9 +27,16 @@ enum FlightDetailsResponseMapper {
             offerToken: reference.offerToken, source: reference.contentSource, tripType: tripType,
             originCode: dto.originCode, destinationCode: dto.destinationCode, departureDate: departureDate,
             returnDate: returnDate, travelers: TravelerCounts(adults: dto.adults, children: dto.children, infants: dto.infants).normalized(),
-            cabinLabel: cabinLabel(dto.cabinClass), airline: AirlineBrand(code: airlineCode(dto.flightNumber), name: dto.airlineName ?? "", logoAssetName: dto.airlineLogoKey),
+            cabinLabel: cabinLabel(dto.cabinClass), airline: AirlineBrand(code: airlineCode(dto.flightNumber), name: dto.airlineName ?? "", logoAssetName: dto.airlineLogoKey,
+                logoURL: dto.airlineLogoUrl.flatMap(URL.init(string:))),
             flightNumber: dto.flightNumber, badge: badge(dto.badge), price: dto.price.money, oldPrice: dto.oldPrice?.money,
-            legs: legs, baggage: .init(cabin: dto.baggage.cabin, checked: dto.baggage.checked, included: dto.baggage.included, detail: dto.baggage.detail),
+            legs: legs, baggage: .init(cabin: dto.baggage.cabin, checked: dto.baggage.checked,
+                included: dto.baggage.included, detail: dto.baggage.detail,
+                allowances: (dto.baggage.allowances ?? []).map {
+                    .init(baggageType: $0.baggageType, inclusion: $0.inclusion ?? "UNKNOWN",
+                        quantity: $0.quantity, weight: $0.weight.map { .init(unit: $0.unit, value: $0.value) },
+                        passengerTypeCodes: $0.passengerTypeCodes ?? [], segmentSequences: $0.segmentSequences ?? [])
+                }),
             fareRules: .init(refundableLabel: dto.fareRules.refundableLabel, changeLabel: dto.fareRules.changeLabel,
                 cancellationLabel: dto.fareRules.cancellationLabel, sections: dto.fareRules.sections.map { .init(title: $0.title, items: $0.items) }),
             priceBreakdown: .init(baseFare: dto.priceBreakdown.baseFare.money, taxesAndFees: dto.priceBreakdown.taxesAndFees.money,

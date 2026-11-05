@@ -34,7 +34,8 @@ enum SearchResponseMapper {
             provider: .travelportGds, contentSource: "TRAVELPORT", responseId: nil, productIds: [],
             termsAndConditionsId: nil, brandRef: nil, expiresAt: expiry)
         return FlightOffer(id: dto.id, reference: reference, offerToken: dto.id, source: "TRAVELPORT",
-            airline: AirlineBrand(code: carrier, name: dto.airline?.name ?? "", logoAssetName: dto.airline?.logoKey),
+            airline: AirlineBrand(code: carrier, name: dto.airline?.name ?? "", logoAssetName: dto.airline?.logoKey,
+                logoURL: dto.airline?.logoUrl.flatMap(URL.init(string:))),
             flightNumber: itinerary.flightNumber, outbound: outbound, inbound: legs.count > 1 ? legs[1] : nil,
             legs: legs, price: Money(amount: dto.totalAmountMinor, currency: dto.currency,
                 formatted: formattedMoney(dto.totalAmountMinor, currency: dto.currency)), seatsLeft: dto.fareAvailability?.remainingSeats,

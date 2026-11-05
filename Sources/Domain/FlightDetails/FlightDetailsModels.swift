@@ -138,6 +138,29 @@ struct BaggageSummary: Equatable, Hashable, Codable, Sendable {
     let checked: String
     let included: Bool
     let detail: String
+    let allowances: [BaggageAllowance]
+
+    init(cabin: String, checked: String, included: Bool, detail: String, allowances: [BaggageAllowance] = []) {
+        self.cabin = cabin
+        self.checked = checked
+        self.included = included
+        self.detail = detail
+        self.allowances = allowances
+    }
+}
+
+struct BaggageAllowance: Equatable, Hashable, Codable, Sendable {
+    let baggageType: String?
+    let inclusion: String
+    let quantity: Int?
+    let weight: BaggageWeight?
+    let passengerTypeCodes: [String]
+    let segmentSequences: [Int]
+}
+
+struct BaggageWeight: Equatable, Hashable, Codable, Sendable {
+    let unit: String
+    let value: Double
 }
 
 /// Refund, change, cancellation, and detailed fare-rule summary.

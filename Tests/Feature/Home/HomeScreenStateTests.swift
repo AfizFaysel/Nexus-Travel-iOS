@@ -2,6 +2,11 @@ import Testing
 @testable import NexusTravel
 
 struct HomeScreenStateTests {
+    @Test func contentWidthExpandsOnWideDisplays() {
+        #expect(HomeLayoutMetrics(screenWidth: 390).contentMaxWidth == NexusLayout.contentMaxWidth)
+        #expect(HomeLayoutMetrics(screenWidth: 820).contentMaxWidth == NexusLayout.homeContentMaxWidthWide)
+    }
+
     @Test func heroMetricsMatchAndroidWithSafeIOSHeaderAdjustment() throws {
         let compact = try #require(HomeHeroMetrics(spacing: NexusAdaptiveSpacing(screenWidth: 360, screenHeight: 720)))
         let regular = try #require(HomeHeroMetrics(spacing: NexusAdaptiveSpacing(screenWidth: 390, screenHeight: 844)))

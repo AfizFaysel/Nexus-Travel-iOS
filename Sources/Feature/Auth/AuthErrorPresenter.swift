@@ -19,6 +19,8 @@ public enum AuthErrorPresenter {
             updated.message = offlineMessage
         case .rateLimited:
             updated.message = rateLimitedMessage
+        case .invalidCode, .expiredCode, .tooManyCodeAttempts:
+            updated.message = unknownMessage
         case .unauthenticated, .sessionExpired:
             updated.message = sessionExpiredMessage
         case .unknown:
@@ -46,18 +48,21 @@ public enum AuthErrorPresenter {
         case .emailNotVerified:
             updated.message = "Verify your email to continue."
         case .networkUnavailable:
-            updated.message = offlineMessage
+            updated.message = signupOutcomeUncertainMessage
         case .rateLimited:
             updated.message = rateLimitedMessage
+        case .invalidCode, .expiredCode, .tooManyCodeAttempts:
+            updated.message = unknownMessage
         case .unauthenticated, .sessionExpired:
             updated.message = sessionExpiredMessage
         case .unknown:
-            updated.message = unknownMessage
+            updated.message = signupOutcomeUncertainMessage
         }
         return updated
     }
 
     private static let emailAlreadyUsedMessage = "An account already exists for this email."
+    private static let signupOutcomeUncertainMessage = "We couldn’t confirm whether your account was created. Check your inbox or try signing in before signing up again."
     private static let offlineMessage = "You appear to be offline. Check your connection and try again."
     private static let rateLimitedMessage = "Too many attempts. Try again later."
     private static let sessionExpiredMessage = "Your session expired. Sign in again."

@@ -27,9 +27,11 @@ enum NexusTablerIconName: Equatable {
     case qrCode
     case airport
     case creditCard
+    case eye
+    case eyeOff
 }
 
-/// SF Symbols used only for Apple controls or states without Android catalog equivalents.
+/// Platform-control names, with password visibility using the installed Tabler family.
 enum NexusPlatformIconName: String {
     case concealedPassword = "eye"
     case deletionRequested = "clock.badge.checkmark"
@@ -43,6 +45,14 @@ enum NexusPlatformIconName: String {
     case success = "checkmark.circle.fill"
     case unavailableNetwork = "wifi.exclamationmark"
     case warningFilled = "exclamationmark.triangle.fill"
+
+    var source: NexusIconSource {
+        switch self {
+        case .concealedPassword: .tabler(.eye)
+        case .revealedPassword: .tabler(.eyeOff)
+        default: .system(rawValue)
+        }
+    }
 }
 
 /// A centrally mapped Apple-only symbol.
@@ -54,9 +64,21 @@ struct NexusPlatformIcon: View {
         self.name = name
     }
 
-    var body: some View {
-        Image(systemName: name.rawValue)
+    @ViewBuilder var body: some View {
+        switch name.source {
+        case let .tabler(tablerName):
+            Image(uiImage: tablerName.image.withRenderingMode(.alwaysTemplate))
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .accessibilityHidden(true)
+        case let .system(systemName):
+            Image(systemName: systemName)
+                .accessibilityHidden(true)
+        case let .custom(assetName):
+            Image(assetName)
             .accessibilityHidden(true)
+        }
     }
 }
 
@@ -135,6 +157,7 @@ enum NexusIconName: String, CaseIterable, Equatable, Hashable {
         case .qr: .tabler(.qrCode)
         case .gate: .tabler(.airport)
         case .payment: .tabler(.creditCard)
+        case .continue: .custom("continue-outline")
         default: .system(systemName)
         }
     }
@@ -244,18 +267,11 @@ struct NexusIcon: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
         case let .custom(assetName):
-            if let url = Bundle.main.url(forResource: assetName, withExtension: "svg"),
-               let image = UIImage(contentsOfFile: url.path) {
-                Image(uiImage: image.withRenderingMode(.alwaysTemplate))
-                    .renderingMode(.template)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: size, height: size)
-            } else {
-                Image(systemName: name.systemName)
-                    .font(.system(size: size))
-                    .frame(width: size, height: size)
-            }
+            Image(assetName)
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
         }
     }
 }
@@ -280,6 +296,8 @@ private extension NexusTablerIconName {
         case .qrCode: TablerIcons.qrcodeOutlined
         case .airport: TablerIcons.buildingAirportOutlined
         case .creditCard: TablerIcons.creditCardOutlined
+        case .eye: TablerIcons.eyeOutlined
+        case .eyeOff: TablerIcons.eyeOffOutlined
         }
     }
 }

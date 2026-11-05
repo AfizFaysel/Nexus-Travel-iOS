@@ -27,6 +27,21 @@ struct SeatSelectionViewModelTests {
         #expect(viewModel.state.assignments.isEmpty)
     }
 
+    @Test func onlyTemporarySeatMapFailureOffersRetry() async throws {
+        let temporary = SeatSelectionViewModel(
+            bookingId: "booking-1", passengerCount: 1,
+            repository: SeatLoadResultRepository(result: .temporarilyUnavailable)
+        )
+        let unavailable = SeatSelectionViewModel(
+            bookingId: "booking-1", passengerCount: 1,
+            repository: SeatLoadResultRepository(result: .offerUnavailable)
+        )
+        try await temporary.load()
+        try await unavailable.load()
+        #expect(temporary.state.canRetryLoad)
+        #expect(!unavailable.state.canRetryLoad)
+    }
+
     private static let map = FlightSeatMap(
         availability: .available,
         segments: [.init(id: "segment-1", airlineName: "Nexus Air", aircraftName: "A320", cabins: [
@@ -39,6 +54,14 @@ struct SeatSelectionViewModelTests {
     private static func seat(_ number: String, status: FlightSeatStatus = .available) -> FlightSeat {
         FlightSeat(number: number, status: status, position: .window, features: [], price: nil)
     }
+}
+
+private actor SeatLoadResultRepository: FlightSeatsRepository {
+    let result: FlightSeatsResult
+    init(result: FlightSeatsResult) { self.result = result }
+    func load(bookingId: String) async throws -> FlightSeatsResult { result }
+    func save(bookingId: String, assignments: [SeatAssignment]) async throws -> SaveSeatsResult { .unknownError }
+    func clear(bookingId: String) async throws -> SaveSeatsResult { .unknownError }
 }
 
 private actor FakeFlightSeatsRepository: FlightSeatsRepository {

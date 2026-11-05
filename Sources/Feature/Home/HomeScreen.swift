@@ -36,16 +36,34 @@ struct HomeHeroMetrics: Equatable {
     }
 }
 
+struct HomeLayoutMetrics: Equatable {
+    let contentMaxWidth: CGFloat
+
+    init(screenWidth: CGFloat) {
+        contentMaxWidth = screenWidth >= NexusLayout.homeWideLayoutMinimumWidth
+            ? NexusLayout.homeContentMaxWidthWide
+            : NexusLayout.contentMaxWidth
+    }
+}
+
+private enum HomeScrollTarget {
+    static let hero = "home.hero"
+    static let searchPanel = "home.search-panel"
+    static let services = "home.services"
+}
+
 struct HomeRoute: View {
     @State private var viewModel: HomeViewModel
+    @Binding var rootScrollTarget: String?
     @State private var airportQueryTask: Task<Void, Never>?
     @State private var searchTask: Task<Void, Never>?
     @State private var reloadTask: Task<Void, Never>?
     @State private var eventTask: Task<Void, Never>?
     let router: Router
 
-    init(viewModel: HomeViewModel, router: Router) {
+    init(viewModel: HomeViewModel, router: Router, rootScrollTarget: Binding<String?>) {
         _viewModel = State(initialValue: viewModel)
+        _rootScrollTarget = rootScrollTarget
         self.router = router
     }
 
@@ -53,11 +71,11 @@ struct HomeRoute: View {
         HomeScreen(
             state: viewModel.uiState,
             today: viewModel.currentDate,
+            rootScrollTarget: $rootScrollTarget,
             onEvent: send,
-            onExplore: { router.select(.explore) },
             onRetry: retry
         )
-            .task { await viewModel.retry() }
+            .task { try? await viewModel.loadIfNeeded() }
             .onDisappear {
                 airportQueryTask?.cancel()
                 viewModel.cancelAirportSearch()
@@ -79,7 +97,7 @@ struct HomeRoute: View {
         if event.usesAirportTask {
             airportQueryTask?.cancel()
             airportQueryTask = Task { await perform(event) }
-        } else if event == .searchClicked || event.isSearchPrefill {
+        } else if event == .searchClicked {
             guard searchTask == nil else { return }
             searchTask = Task {
                 await perform(event)
@@ -99,9 +117,8 @@ struct HomeRoute: View {
         while let navigation = viewModel.consumeNavigationEvent() {
             switch navigation {
             case let .toSearchResults(searchId): router.push(.searchResults(SearchResultsRoute(searchId: searchId)))
-            case .toPackages:
-                router.select(.explore)
-                router.push(.explore(ExploreRoute(filter: .packages)))
+            case let .toDestinationDetail(destinationId):
+                router.push(.destinationDetail(.init(destinationId: destinationId)))
             }
         }
     }
@@ -110,37 +127,46 @@ struct HomeRoute: View {
 struct HomeScreen: View {
     let state: HomeUiState
     let today: LocalDate
+    @Binding var rootScrollTarget: String?
     let onEvent: (HomeUiEvent) -> Void
-    let onExplore: () -> Void
     let onRetry: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         GeometryReader { geometry in
             let spacing = NexusAdaptiveSpacing(screenWidth: geometry.size.width, screenHeight: geometry.size.height)
             let metrics = HomeHeroMetrics(spacing: spacing)
+            let layoutMetrics = HomeLayoutMetrics(screenWidth: geometry.size.width)
+            let contentWidth = min(geometry.size.width, layoutMetrics.contentMaxWidth)
             let screenMargin = spacing?.screenMargin ?? NexusLayout.screenMargin
             ZStack(alignment: .top) {
                 NexusSemanticColors.backgroundPage.ignoresSafeArea()
-                heroBackground(metrics).ignoresSafeArea(edges: .top)
+                heroBackground(metrics)
+                    .frame(width: geometry.size.width)
+                    .clipped()
+                    .ignoresSafeArea(edges: .top)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        header.padding(.top, metrics.headerTopPadding)
-                        serviceLauncher
+                        header
+                            .padding(.top, metrics.headerTopPadding)
+                            .id(HomeScrollTarget.hero)
+                        searchPanel(cardPadding: metrics.cardPadding)
                             .padding(.top, metrics.greetingToLauncherGap)
-                        if state.selectedService == .flight {
-                            searchPanel(cardPadding: metrics.cardPadding)
-                                .padding(.top, metrics.launcherToSearchGap)
-                                .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
-                        }
-                        stateSection.padding(.top, metrics.launcherToSearchGap)
-                        if !state.recentSearches.isEmpty { recentSearches.padding(.top, NexusSpacing.space24) }
+                            .id(HomeScrollTarget.searchPanel)
+                        stateSection
+                            .padding(.top, metrics.launcherToSearchGap)
+                            .id(HomeScrollTarget.services)
+                            .accessibilityIdentifier("home-section-services")
                     }
                     .padding(.horizontal, screenMargin)
-                    .padding(.bottom, NexusSpacing.space32)
-                    .frame(maxWidth: NexusLayout.contentMaxWidth)
+                    .padding(.bottom, featuredCardHeight)
+                    .frame(width: contentWidth)
                     .frame(maxWidth: .infinity)
+                    .scrollTargetLayout()
                 }
+                .scrollPosition(id: $rootScrollTarget, anchor: .top)
+                .accessibilityIdentifier("root-home")
             }
         }
         .animation(
@@ -194,71 +220,37 @@ struct HomeScreen: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var serviceLauncher: some View {
-        HStack(spacing: NexusSpacing.space8) {
-            serviceButton("Flight", icon: .flight, selected: state.selectedService == .flight) { onEvent(.flightClicked) }
-            serviceButton("Hotel", icon: .hotel) { onEvent(.hotelClicked) }
-            serviceButton("Package", icon: .baggage) { onEvent(.packageClicked) }
-        }
-        .padding(NexusSpacing.space16)
-        .background(NexusSemanticColors.surfaceBase)
-        .clipShape(RoundedRectangle(cornerRadius: NexusRadius.xxl))
-        .overlay { RoundedRectangle(cornerRadius: NexusRadius.xxl).stroke(NexusSemanticColors.borderSubtle) }
-    }
-
-    private func serviceButton(_ label: String, icon: NexusIconName, selected: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: NexusSpacing.space8) {
-                NexusIcon(name: icon)
-                Text(label).nexusTextStyle(NexusText.styles.label)
-            }
-            .padding(.horizontal, NexusSpacing.space8)
-            .padding(.vertical, NexusSpacing.space12)
-            .foregroundStyle(selected ? NexusSemanticColors.brandPrimary : NexusSemanticColors.textPrimary)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: NexusLayout.touchRecommended + NexusSpacing.space24,
-                maxHeight: NexusLayout.touchRecommended + NexusSpacing.space24
-            )
-            .background(selected ? NexusSemanticColors.surfaceActive : NexusSemanticColors.surfaceBase)
-            .clipShape(RoundedRectangle(cornerRadius: NexusRadius.md))
-            .overlay {
-                RoundedRectangle(cornerRadius: NexusRadius.md)
-                    .stroke(selected ? NexusSemanticColors.borderFocus : NexusSemanticColors.borderSubtle,
-                            lineWidth: NexusBorder.hairline)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-    }
-
     private func searchPanel(cardPadding: CGFloat) -> some View {
         VStack(spacing: NexusSpacing.space16) {
             tripTypeSelector
             if let error = state.validationError { message(error.message, error: true) }
             if let status = state.message, state.loadPhase != .error { message(status, error: false) }
             if state.tripType == .multiCity { multiCityFields } else { standardFields }
-            HStack(spacing: NexusSpacing.space12) {
+            adaptiveFieldLayout {
                 field("Travelers", state.travelers.summary(), .profile, .travelersClicked, showsChevron: true)
-                verticalDivider
+                Divider().overlay(NexusSemanticColors.borderDefault)
                 field("Cabin Class", state.cabinClass.label, .seat, .cabinClassClicked, showsChevron: true)
             }
-            NexusPrimaryButton("Search Flights", isLoading: state.isSearching, fillsWidth: true) { onEvent(.searchClicked) }
+            NexusPrimaryButton("Search Flights", isLoading: state.isSearching, loadingTitle: "Searching…", fillsWidth: true) { onEvent(.searchClicked) }
         }
         .padding(cardPadding)
+        .frame(maxWidth: .infinity)
         .background(NexusSemanticColors.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: NexusRadius.xxxl))
         .shadow(color: NexusSemanticColors.textPrimary.opacity(0.14), radius: NexusSpacing.space8, y: NexusSpacing.space4)
     }
 
     private var tripTypeSelector: some View {
-        HStack(spacing: 0) {
+        let layout = usesAccessibilityLayout
+            ? AnyLayout(VStackLayout(spacing: NexusSpacing.space4))
+            : AnyLayout(HStackLayout(spacing: 0))
+        return layout {
             tripTypeButton("One Way", type: .oneWay)
             tripTypeButton("Round Trip", type: .roundTrip)
             tripTypeButton("Multi-city", type: .multiCity)
         }
         .padding(NexusSpacing.space4)
-        .frame(height: NexusLayout.touchRecommended)
+        .frame(height: usesAccessibilityLayout ? nil : NexusLayout.touchRecommended)
         .background(NexusSemanticColors.surfaceBase)
         .clipShape(RoundedRectangle(cornerRadius: NexusRadius.xl))
         .overlay { RoundedRectangle(cornerRadius: NexusRadius.xl).stroke(NexusSemanticColors.borderDefault) }
@@ -270,7 +262,11 @@ struct HomeScreen: View {
             Text(title)
                 .nexusTextStyle(NexusText.styles.label)
                 .foregroundStyle(state.tripType == type ? NexusSemanticColors.actionPrimaryText : NexusSemanticColors.textSecondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: usesAccessibilityLayout ? NexusLayout.touchRecommended : nil,
+                    maxHeight: .infinity
+                )
                 .background {
                     if state.tripType == type {
                         LinearGradient(
@@ -288,9 +284,12 @@ struct HomeScreen: View {
 
     private var standardFields: some View {
         VStack(spacing: NexusSpacing.space16) {
-            HStack {
+            adaptiveFieldLayout {
                 field("From", state.origin?.displayName ?? "Select origin", .flightDeparture, .originClicked)
-                Button { onEvent(.swapAirportsClicked) } label: { NexusIcon(name: .arrowsExchange, accessibilityLabel: "Swap origin and destination") }
+                Button { onEvent(.swapAirportsClicked) } label: {
+                    NexusIcon(name: .arrowsExchange, accessibilityLabel: "Swap origin and destination")
+                        .foregroundStyle(NexusSemanticColors.brandPrimary)
+                }
                     .frame(width: NexusLayout.touchRecommended, height: NexusLayout.touchRecommended)
                     .background(NexusSemanticColors.surfaceBase)
                     .clipShape(Circle())
@@ -299,10 +298,10 @@ struct HomeScreen: View {
                 field("To", state.destination?.displayName ?? "Select destination", .flightArrival, .destinationClicked)
             }
             Divider().overlay(NexusSemanticColors.borderDefault)
-            HStack(spacing: NexusSpacing.space12) {
+            adaptiveFieldLayout {
                 field("Departure", state.departureDate?.displayText ?? "Select date", .calendar, .departureDateClicked)
                 if state.tripType == .roundTrip {
-                    verticalDivider
+                    Divider().overlay(NexusSemanticColors.borderDefault)
                     field("Return", state.returnDate?.displayText ?? "Select date", .calendar, .returnDateClicked)
                 }
             }
@@ -310,18 +309,12 @@ struct HomeScreen: View {
         }
     }
 
-    private var verticalDivider: some View {
-        Rectangle()
-            .fill(NexusSemanticColors.borderDefault)
-            .frame(width: NexusBorder.hairline, height: NexusLayout.touchRecommended)
-    }
-
     private var multiCityFields: some View {
         VStack(spacing: NexusSpacing.space16) {
             ForEach(Array(state.multiCityLegs.enumerated()), id: \.offset) { index, leg in
                 VStack(alignment: .leading, spacing: NexusSpacing.space8) {
                     HStack { Text("Flight \(index + 1)").nexusTextStyle(NexusText.styles.label); Spacer(); if state.multiCityLegs.count > 2 { Button("Remove") { onEvent(.removeMultiCityLeg(index: index)) }.foregroundStyle(NexusSemanticColors.errorText) } }
-                    HStack { field("From", leg.origin?.displayName ?? "Select origin", .flightDeparture, .multiCityOriginClicked(index: index)); field("To", leg.destination?.displayName ?? "Select destination", .flightArrival, .multiCityDestinationClicked(index: index)) }
+                    adaptiveFieldLayout { field("From", leg.origin?.displayName ?? "Select origin", .flightDeparture, .multiCityOriginClicked(index: index)); field("To", leg.destination?.displayName ?? "Select destination", .flightArrival, .multiCityDestinationClicked(index: index)) }
                     field("Departure", leg.departureDate?.displayText ?? "Select date", .calendar, .multiCityDateClicked(index: index))
                 }
             }
@@ -341,27 +334,23 @@ struct HomeScreen: View {
         _ event: HomeUiEvent,
         showsChevron: Bool = false
     ) -> some View {
-        Button { onEvent(event) } label: {
-            VStack(alignment: .leading, spacing: NexusSpacing.space2) {
-                HStack(spacing: NexusSpacing.space12) {
-                    NexusIcon(name: icon)
-                    Text(label).nexusTextStyle(NexusText.styles.label)
-                        .foregroundStyle(NexusSemanticColors.textSecondary)
-                    if showsChevron {
-                        Spacer(minLength: 0)
-                        NexusIcon(name: .chevronDown)
-                    }
-                }
-                Text(value)
-                    .nexusTextStyle(NexusText.styles.formInput)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .multilineTextAlignment(.leading)
-            }.frame(maxWidth: .infinity, minHeight: NexusLayout.inputHeight, alignment: .leading)
+        NexusSearchField(label: label, value: value, icon: icon, showsChevron: showsChevron) {
+            onEvent(event)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(label), \(value)")
         .accessibilityHint(fieldError(for: label)?.message ?? "")
+    }
+
+    private var usesAccessibilityLayout: Bool {
+        dynamicTypeSize.isAccessibilitySize
+    }
+
+    private func adaptiveFieldLayout<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let layout = usesAccessibilityLayout
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: NexusSpacing.space12))
+            : AnyLayout(HStackLayout(spacing: NexusSpacing.space12))
+        return layout { content() }
     }
 
     @ViewBuilder private var stateSection: some View {
@@ -371,50 +360,92 @@ struct HomeScreen: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Loading travel ideas")
         case .error:
-            VStack(alignment: .leading, spacing: NexusSpacing.space12) {
-                message(state.message ?? "We could not load your home page. Please try again.", error: false)
-                NexusSecondaryButton("Retry", fillsWidth: true, action: onRetry)
-            }
+            message(state.message ?? "We could not load your home page. Please try again.", error: true, retry: onRetry)
         case .empty:
-            ContentUnavailableView("No trending escapes yet", systemImage: NexusIconName.map.systemName,
-                                   description: Text("Search for a flight or check again later."))
+            featuredDestinations
         case .content:
-            trending
+            featuredDestinations
         }
     }
 
-    private var trending: some View {
+    private var featuredDestinations: some View {
         VStack(alignment: .leading, spacing: NexusSpacing.space12) {
-            HStack { Text("Trending Escapes").nexusTextStyle(NexusText.styles.screenTitle); Spacer(); Button("View all", action: onExplore) }
+            Text("Featured destinations")
+                .nexusTextStyle(NexusText.styles.screenTitle)
+                .accessibilityIdentifier("home-section-services")
             ScrollView(.horizontal) {
                 HStack(spacing: NexusSpacing.space16) {
                     ForEach(state.trendingEscapes, id: \.id) { escape in
                         Button { onEvent(.trendingEscapeClicked(escape)) } label: {
-                            VStack(alignment: .leading, spacing: NexusSpacing.space8) {
-                                AsyncImage(url: URL(string: escape.imageName)) { image in image.resizable().scaledToFill() } placeholder: { NexusSemanticColors.surfaceMuted }
-                                    .frame(width: NexusLayout.contentMaxWidth / 3, height: NexusLayout.buttonHeight * 2).clipped()
-                                    .accessibilityLabel(escape.airport.displayName)
-                                Text(escape.airport.displayName).nexusTextStyle(NexusText.styles.listTitle)
-                                Text(escape.tags.joined(separator: " · ")).nexusTextStyle(NexusText.styles.caption).foregroundStyle(NexusSemanticColors.textSecondary)
-                            }.frame(width: NexusLayout.contentMaxWidth / 3)
-                        }.buttonStyle(.plain)
+                            Color.clear
+                            .frame(width: featuredCardWidth, height: featuredCardHeight)
+                            .background {
+                                AsyncImage(url: URL(string: escape.imageName)) { image in
+                                    image.resizable().scaledToFill()
+                                } placeholder: {
+                                    NexusSemanticColors.surfaceMuted
+                                }
+                                .frame(width: featuredCardWidth, height: featuredCardHeight)
+                                .clipped()
+                            }
+                            .overlay(alignment: .bottomLeading) {
+                                featuredCardCaption(
+                                    title: escape.airport.city,
+                                    subtitle: escape.airport.country
+                                )
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: NexusRadius.xl))
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: featuredCardWidth, height: featuredCardHeight)
+                        .contentShape(RoundedRectangle(cornerRadius: NexusRadius.xl))
+                        .accessibilityIdentifier("home-featured-destination-\(escape.id)")
+                        .accessibilityLabel("\(escape.airport.city), \(escape.airport.country)")
                     }
                 }
             }.scrollIndicators(.hidden)
         }
     }
 
-    private var recentSearches: some View {
-        VStack(alignment: .leading, spacing: NexusSpacing.space8) {
-            Text("Recent Searches").nexusTextStyle(NexusText.styles.screenTitle)
-            ScrollView(.horizontal) { HStack { ForEach(state.recentSearches, id: \.id) { search in Button("\(search.originCode) → \(search.destinationCode)\n\(search.dateRange)") { onEvent(.recentSearchClicked(search)) }.buttonStyle(.bordered) } } }.scrollIndicators(.hidden)
+    private var featuredCardWidth: CGFloat { NexusLayout.contentMaxWidth / 3 }
+
+    private var featuredCardHeight: CGFloat { NexusLayout.buttonHeight * 3 }
+
+    private func featuredCardCaption(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: NexusSpacing.space2) {
+            Text(title)
+                .nexusTextStyle(NexusText.styles.listTitle)
+                .lineLimit(1)
+            Text(subtitle)
+                .nexusTextStyle(NexusText.styles.caption)
+                .lineLimit(1)
         }
+        .foregroundStyle(NexusColors.white)
+        .padding(.top, NexusSpacing.space32)
+        .padding(NexusSpacing.space12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [.clear, NexusSemanticColors.overlayScrim],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 
-    private func message(_ text: String, error: Bool) -> some View {
-        Label(text, systemImage: NexusIconName.info.systemName)
-            .nexusTextStyle(error ? NexusText.styles.errorText : NexusText.styles.bodySmall)
-            .foregroundStyle(error ? NexusSemanticColors.errorText : NexusSemanticColors.textPrimary)
+    private func message(_ text: String, error: Bool, retry: (() -> Void)? = nil) -> some View {
+        HStack(spacing: NexusSpacing.space8) {
+            Label(text, systemImage: error ? NexusIconName.warning.systemName : NexusIconName.info.systemName)
+                .nexusTextStyle(error ? NexusText.styles.errorText : NexusText.styles.bodySmall)
+                .foregroundStyle(error ? NexusSemanticColors.errorText : NexusSemanticColors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let retry {
+                Button("Try again", action: retry)
+                    .nexusTextStyle(NexusText.styles.link)
+                    .foregroundStyle(NexusSemanticColors.link)
+                    .frame(minHeight: NexusLayout.touchMin)
+            }
+        }
             .padding(NexusSpacing.space12).frame(maxWidth: .infinity, alignment: .leading)
             .background(error ? NexusSemanticColors.errorBg : NexusSemanticColors.brandSoft)
             .clipShape(RoundedRectangle(cornerRadius: NexusRadius.md))
@@ -432,24 +463,36 @@ struct HomeScreen: View {
 }
 
 private struct HomeSheetView: View {
+    @State private var contentHeight = NexusLayout.homeChoiceSheetInitialHeight
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let sheet: HomeSheet
     let state: HomeUiState
     let today: LocalDate
     let onEvent: (HomeUiEvent) -> Void
 
-    @ViewBuilder var body: some View {
+    var body: some View {
+        content.presentationDetents(
+            (sheet == .travelers || sheet == .cabinClass) && !dynamicTypeSize.isAccessibilitySize
+                ? [.height(contentHeight), .large] : [.large]
+        )
+    }
+
+    @ViewBuilder private var content: some View {
         switch sheet {
         case .originAirport, .destinationAirport, .multiCityOrigin, .multiCityDestination:
             AirportSelectorSheet(state: state, onEvent: onEvent)
         case .departureDate: DateSelectorSheet(title: "Select departure", selected: state.departureDate, minimum: today) { onEvent(.departureDateSelected($0)) }
         case .returnDate: DateSelectorSheet(title: "Select return", selected: state.returnDate, minimum: state.departureDate?.addingDays(1)) { onEvent(.returnDateSelected($0)) }
         case let .multiCityDate(index): DateSelectorSheet(title: "Select date for Flight \(index + 1)", selected: state.multiCityLegs[safe: index]?.departureDate, minimum: state.multiCityLegs[safe: index - 1]?.departureDate ?? today) { onEvent(.multiCityDateSelected(index: index, date: $0)) }
-        case .travelers: TravelerSelectorSheet(state: state, onEvent: onEvent)
+        case .travelers: TravelerSelectorSheet(state: state, onEvent: onEvent, onContentHeightChange: updateContentHeight)
         case .cabinClass:
-            CabinClassSheet(selected: state.cabinClass, onEvent: onEvent)
+            CabinClassSheet(selected: state.cabinClass, onEvent: onEvent, onContentHeightChange: updateContentHeight)
         case .hotelComingSoon:
             VStack(alignment: .leading, spacing: NexusSpacing.space16) { Text("Hotels are coming soon").nexusTextStyle(NexusText.styles.sectionTitle); Text("We’re working on hotel booking. For now, you can search flights and explore travel packages."); NexusPrimaryButton("Got it", fillsWidth: true) { onEvent(.dismissSheet) } }.padding(NexusSpacing.space24)
         }
+    }
+    private func updateContentHeight(_ height: CGFloat) {
+        if height > 0 { contentHeight = height }
     }
 }
 
@@ -500,7 +543,7 @@ private struct AirportSelectorSheet: View {
     }
 }
 
-private struct DateSelectorSheet: View {
+struct DateSelectorSheet: View {
     let title: String
     let selected: LocalDate?
     let minimum: LocalDate?
@@ -526,13 +569,15 @@ private struct DateSelectorSheet: View {
 
 private struct TravelerSelectorSheet: View {
     let onEvent: (HomeUiEvent) -> Void
+    let onContentHeightChange: (CGFloat) -> Void
     @State private var adults: Int
     @State private var children: Int
     @State private var infants: Int
     @State private var childAges: [Int]
     @State private var infantAges: [Int]
-    init(state: HomeUiState, onEvent: @escaping (HomeUiEvent) -> Void) {
+    init(state: HomeUiState, onEvent: @escaping (HomeUiEvent) -> Void, onContentHeightChange: @escaping (CGFloat) -> Void) {
         self.onEvent = onEvent
+        self.onContentHeightChange = onContentHeightChange
         _adults = State(initialValue: state.travelers.adults)
         _children = State(initialValue: state.travelers.children)
         _infants = State(initialValue: state.travelers.infants)
@@ -540,28 +585,31 @@ private struct TravelerSelectorSheet: View {
         _infantAges = State(initialValue: (0..<state.travelers.infants).map { state.infantAges[safe: $0] ?? 0 })
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: NexusSpacing.space24) {
-            Text("Travelers").nexusTextStyle(NexusText.styles.sectionTitle)
-            travelerRow("Adults", detail: "Age 12+", value: $adults, range: 1...TravelerCounts.maxTravelers)
-            travelerRow("Children", detail: "Age 2–11", value: $children, range: 0...TravelerCounts.maxTravelers)
-                .onChange(of: children) { _, count in childAges = (0..<count).map { childAges[safe: $0] ?? 2 } }
-            travelerRow("Infants", detail: "Under 2", value: $infants, range: 0...TravelerCounts.maxTravelers)
-                .onChange(of: infants) { _, count in infantAges = (0..<count).map { infantAges[safe: $0] ?? 0 } }
-            ForEach(childAges.indices, id: \.self) { index in
-                Stepper("Child \(index + 1) age: \(childAges[index])", value: $childAges[index], in: 2...11)
+        ScrollView {
+            VStack(alignment: .leading, spacing: NexusSpacing.space24) {
+                Text("Travelers").nexusTextStyle(NexusText.styles.sectionTitle)
+                travelerRow("Adults", detail: "Age 12+", value: $adults, range: 1...TravelerCounts.maxTravelers)
+                travelerRow("Children", detail: "Age 2–11", value: $children, range: 0...TravelerCounts.maxTravelers)
+                    .onChange(of: children) { _, count in childAges = (0..<count).map { childAges[safe: $0] ?? 2 } }
+                travelerRow("Infants", detail: "Under 2", value: $infants, range: 0...TravelerCounts.maxTravelers)
+                    .onChange(of: infants) { _, count in infantAges = (0..<count).map { infantAges[safe: $0] ?? 0 } }
+                ForEach(childAges.indices, id: \.self) { index in
+                    Stepper("Child \(index + 1) age: \(childAges[index])", value: $childAges[index], in: 2...11)
+                }
+                ForEach(infantAges.indices, id: \.self) { index in
+                    Stepper("Infant \(index + 1) age: \(infantAges[index])", value: $infantAges[index], in: 0...1)
+                }
+                NexusPrimaryButton("Apply", fillsWidth: true) {
+                    onEvent(.travelersChanged(
+                        TravelerCounts(adults: adults, children: children, infants: infants),
+                        childAges: childAges,
+                        infantAges: infantAges
+                    ))
+                }
             }
-            ForEach(infantAges.indices, id: \.self) { index in
-                Stepper("Infant \(index + 1) age: \(infantAges[index])", value: $infantAges[index], in: 0...1)
-            }
-            NexusPrimaryButton("Apply", fillsWidth: true) {
-                onEvent(.travelersChanged(
-                    TravelerCounts(adults: adults, children: children, infants: infants),
-                    childAges: childAges,
-                    infantAges: infantAges
-                ))
-            }
+            .padding(NexusSpacing.space24)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onContentHeightChange($0) }
         }
-        .padding(NexusSpacing.space24)
     }
 
     private func travelerRow(
@@ -588,8 +636,10 @@ private struct TravelerSelectorSheet: View {
 private struct CabinClassSheet: View {
     let selected: CabinClass
     let onEvent: (HomeUiEvent) -> Void
+    let onContentHeightChange: (CGFloat) -> Void
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: NexusSpacing.space12) {
             Text("Cabin class").nexusTextStyle(NexusText.styles.sectionTitle)
             ForEach(CabinClass.allCases, id: \.self) { cabin in
@@ -605,9 +655,12 @@ private struct CabinClassSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: NexusRadius.lg))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(cabin.label)
             }
         }
         .padding(NexusSpacing.space24)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onContentHeightChange($0) }
+        }
     }
 }
 
@@ -616,13 +669,6 @@ private extension HomeValidationError {
 }
 
 private extension HomeUiEvent {
-    var isSearchPrefill: Bool {
-        switch self {
-        case .trendingEscapeClicked, .recentSearchClicked: true
-        default: false
-        }
-    }
-
     var usesAirportTask: Bool {
         switch self {
         case .airportQueryChanged, .originClicked, .destinationClicked,
@@ -645,8 +691,6 @@ private extension Array where Element == MultiCityLegUiState {
 private extension TripType { static var allCases: [TripType] { [.oneWay, .roundTrip, .multiCity] } }
 private extension CabinClass { static var allCases: [CabinClass] { [.economy, .premiumEconomy, .business, .first] } }
 private extension LocalDate {
-    var foundationDate: Date { Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast }
-    init?(date: Date) { let parts = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: date); guard let year = parts.year, let month = parts.month, let day = parts.day else { return nil }; self.init(year: year, month: month, day: day) }
     var displayText: String { foundationDate.formatted(.dateTime.month(.abbreviated).day().year()) }
 }
 private extension Array { subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil } }

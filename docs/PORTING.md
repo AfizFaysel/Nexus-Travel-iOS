@@ -34,7 +34,7 @@ The translation contract for every agent. If a rule proves wrong or incomplete, 
 | `@Serializable data class SearchResultsRoute(val searchId: String)` | Case in `enum Route: Hashable, Codable`: `case searchResults(searchId: String)` | One Route enum mirroring NexusRoutes.kt |
 | `navController.popBackStack()` | `router.pop()` | |
 | `popUpTo<X> { inclusive }` / `popBackStack(X, inclusive)` | Rebuild `path` array to desired suffix | Arrays make this trivial |
-| Single NavHost + bottom bar tabs (`saveState`/`restoreState`) | `TabView` + one NavigationStack+Router per tab | Per-tab state preservation is native; replaces that plumbing |
+| Single NavHost + bottom bar tabs (`saveState`/`restoreState`) | App-owned `MainTab` selection + one selected `NavigationStack` bound to its Router path | Stable root ViewModels, each tab path, root selections, and stable scroll targets preserve tab state while inactive roots are not rendered |
 | `BuildConfig.DEBUG` | `#if DEBUG` | |
 | `rememberNexusAdaptiveSpacing()` Compact/Regular/Spacious | Pure screen-geometry resolver using identical width/height thresholds | Preserve all three Kotlin modes; inject geometry so boundary behavior is unit-testable |
 | hardcoded strings / `stringResource` | Inline literals, text verbatim | Gap G8 |
@@ -43,7 +43,7 @@ The translation contract for every agent. If a rule proves wrong or incomplete, 
 | `NetworkFailure` sealed type | `enum NetworkFailure: Equatable, Sendable` | Port cases verbatim |
 | Room `NexusDatabase` / DAOs | SwiftData `@Model` + `ModelContainer` | Only in Phase 6 if fakes prove insufficient |
 | Coil ImageLoader config | `AsyncImage`; URLCache defaults | Custom cache only on measured need |
-| `MainBottomBar` | `TabView` + styling derived from Android component code | Preserve product behavior with native tab semantics |
+| `MainBottomBar` | Native SwiftUI `Button`s in one root-only `.safeAreaInset(edge: .bottom)` | `MainTab` selection is the only selected-state source; buttons expose labels and `.isSelected` |
 
 ## 2. Canonical ViewModel pattern
 
@@ -97,11 +97,18 @@ final class Router {
 }
 ```
 
-- Four tabs (`MainTab`: home/explore/trips/profile), each owns `NavigationStack(path:)` + Router. The booking chain lives on Home's stack exactly as in Android's NavHost.
+- Four tabs (`MainTab`: home/explore/trips/profile) share one app-owned Router with four independent paths. Render only the selected tab in one native `NavigationStack(path:)`; stable root ViewModels and root scroll targets live above that conditional view so switching tabs preserves useful state and cancels inactive view tasks.
+- The floating `MainBottomBar` appears only when the selected path is at its root. It uses native `Button`s and one `.safeAreaInset`, with no `TabView`, `UITabBar`, or UIKit appearance proxy. This avoids iPadOS-adapted top tab chrome and hidden-tab layout effects while keeping native push navigation, back gestures, and sheets.
+- A cross-tab action such as Home → Travel packages updates Explore's filter and selects Explore in one synchronous Router operation. Do not push the Explore root as a child destination.
 - `BookingFlowState` ports as `@MainActor @Observable final class BookingFlowState` (same fields: authenticated, offerReference, passengerDetails, submitPassengerDetailsAfterAuth…), owned by composition root, passed explicitly. It is THE seam between booking screens — never scatter its fields.
 - Route is Codable → SceneStorage restoration possible later. Skip until needed.
 
 ## 4. Gap inventory
+
+Compact choice sheets use content-measured native height detents, not a fixed `.medium`
+detent; accessibility text uses scrollable `.large`. Measure intrinsic content before
+any expanding frame. Simulator Keychain gates require native ad-hoc signing; unsigned
+UI previews do not verify persistent-session behavior.
 
 | ID | Gap | Decision |
 |---|---|---|

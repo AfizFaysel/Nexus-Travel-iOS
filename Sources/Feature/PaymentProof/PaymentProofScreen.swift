@@ -11,6 +11,7 @@ struct PaymentProofScreenRoute: View {
     var body: some View {
         PaymentProofScreen(viewModel: viewModel, onBack: { router.pop() }, onUpload: upload,
                            onViewTrip: { router.push(.tripDetail(.init(tripId: bookingId))) })
+            .task { try? await viewModel.verifyStatus() }
             .onDisappear { uploadTask?.cancel() }
     }
     private func upload() {
@@ -28,24 +29,34 @@ struct PaymentProofScreen: View {
     @State private var importsDocument = false
     var body: some View {
         VStack(alignment: .leading, spacing: NexusSpacing.space16) {
-            Text("Pay and upload receipt").font(.title.bold())
-            Text("Upload a PDF or image receipt after payment. Our team verifies it, then issues your ticket.")
+            Text("Upload payment receipt").font(.title.bold())
+            Text("Only pay after the airline hold is confirmed. Then upload your receipt for verification.")
                 .foregroundStyle(.secondary)
+            if viewModel.state.checkingStatus { ProgressView("Checking booking status…") }
             VStack(alignment: .leading, spacing: NexusSpacing.space12) {
                 Text("Receipt file").font(.headline)
                 Text(viewModel.state.selected?.displayName ?? "PDF, JPG, or PNG up to 10 MB").foregroundStyle(.secondary)
-                NexusSecondaryButton("Choose file", fillsWidth: true) { importsDocument = true }
+                NexusSecondaryButton("Choose file", isEnabled: viewModel.state.canUploadProof, fillsWidth: true) { importsDocument = true }
             }.padding(NexusSpacing.space16).background(.background, in: .rect(cornerRadius: NexusRadius.lg))
             if let message = viewModel.state.message {
-                Text(message).foregroundStyle(viewModel.state.uploaded ? .green : .red)
-                    .accessibilityLabel(message)
+                NexusFeedbackPanel(
+                    title: viewModel.state.uploaded ? "Receipt submitted" :
+                        (viewModel.state.canUploadProof ? "Receipt needs attention" : "Booking status not confirmed"),
+                    message: message,
+                    status: viewModel.state.uploaded ? .success :
+                        (viewModel.state.canUploadProof ? .error : .warning),
+                    primaryActionLabel: viewModel.state.canRetry ? "Try again" :
+                        (!viewModel.state.canUploadProof ? "Check status" : nil),
+                    onPrimaryAction: viewModel.state.canRetry ? onUpload :
+                        (!viewModel.state.canUploadProof ? { Task { try? await viewModel.verifyStatus() } } : nil)
+                )
             }
             Spacer()
             if viewModel.state.uploaded {
                 NexusPrimaryButton("View trip", fillsWidth: true, action: onViewTrip)
             } else {
-                NexusPrimaryButton("Upload receipt", isEnabled: viewModel.state.selected != nil,
-                                   isLoading: viewModel.state.uploading, fillsWidth: true, action: onUpload)
+                NexusPrimaryButton("Upload receipt", isEnabled: viewModel.state.selected != nil && viewModel.state.canUploadProof,
+                                   isLoading: viewModel.state.uploading, loadingTitle: "Uploading…", fillsWidth: true, action: onUpload)
             }
         }
         .padding(NexusSpacing.space20).navigationTitle("Payment receipt").navigationBarBackButtonHidden()

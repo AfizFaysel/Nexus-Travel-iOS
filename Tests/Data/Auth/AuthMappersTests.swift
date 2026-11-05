@@ -58,7 +58,10 @@ struct AuthMappersTests {
         ("EMAIL_ALREADY_EXISTS", AuthError.emailAlreadyUsed),
         ("EMAIL_NOT_VERIFIED", AuthError.emailNotVerified),
         ("UNAUTHENTICATED", AuthError.unauthenticated),
-        ("SESSION_EXPIRED", AuthError.sessionExpired)
+        ("SESSION_EXPIRED", AuthError.sessionExpired),
+        ("INVALID_OTP", AuthError.invalidCode),
+        ("OTP_EXPIRED", AuthError.expiredCode),
+        ("TOO_MANY_ATTEMPTS", AuthError.tooManyCodeAttempts)
     ])
     func mapsBackendErrorCodes(_ code: String, _ expected: AuthError) {
         #expect(AuthMapper.error(AuthErrorDTO(code: code, message: "message", fieldErrors: nil), statusCode: 400) == expected)
@@ -72,9 +75,13 @@ struct AuthMappersTests {
         )
         #expect(AuthMapper.error(validation, statusCode: 422) == .validation([.fullName: "Name", .email: "Email"]))
         #expect(AuthMapper.error(.init(code: "INVALID_EMAIL", message: "Invalid email", fieldErrors: nil), statusCode: 400)
-            == .validation([.email: "Invalid email"]))
+            == .validation([.email: "Enter a valid email address."]))
         #expect(AuthMapper.error(.init(code: "PASSWORD_TOO_SHORT", message: "Short", fieldErrors: nil), statusCode: 400)
-            == .validation([.password: "Short"]))
+            == .validation([.password: "Password must be at least 8 characters."]))
+        #expect(AuthMapper.error(.init(code: "PASSWORD_TOO_LONG", message: "Long", fieldErrors: nil), statusCode: 400)
+            == .validation([.password: "Password is too long."]))
+        #expect(AuthMapper.error(.init(code: "INVALID_PASSWORD", message: "Bad", fieldErrors: nil), statusCode: 400)
+            == .validation([.password: "Enter a valid password."]))
         #expect(AuthMapper.error(.init(code: "WHATEVER", message: "x", fieldErrors: nil), statusCode: 429) == .rateLimited)
         #expect(AuthMapper.error(.init(code: "RESET_PASSWORD_DISABLED", message: "x", fieldErrors: nil), statusCode: 400) == .unknown)
     }

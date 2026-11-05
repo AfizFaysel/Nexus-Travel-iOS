@@ -44,6 +44,16 @@ struct LocalDate: Equatable, Hashable, Codable, Sendable, Comparable {
         String(format: "%04d-%02d-%02d", year, month, day)
     }
 
+    var foundationDate: Date {
+        Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
+    }
+
+    init?(date: Date) {
+        let parts = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: date)
+        guard let year = parts.year, let month = parts.month, let day = parts.day else { return nil }
+        self.init(year: year, month: month, day: day)
+    }
+
     /// Returns date offset by given number of Gregorian calendar days.
     func addingDays(_ days: Int) -> LocalDate? {
         guard let date = Self.foundationDate(year: year, month: month, day: day),

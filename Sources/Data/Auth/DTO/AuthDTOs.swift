@@ -15,6 +15,27 @@ struct PasswordResetRequestDTO: Encodable, Sendable {
     let email: String
 }
 
+struct PasswordUpdateDTO: Encodable, Sendable {
+    let token: String
+    let newPassword: String
+}
+
+struct VerificationCodeRequestDTO: Encodable, Sendable {
+    let email: String
+    let type = "email-verification"
+}
+
+struct VerifyEmailCodeDTO: Encodable, Sendable {
+    let email: String
+    let otp: String
+}
+
+struct ResetPasswordCodeDTO: Encodable, Sendable {
+    let email: String
+    let otp: String
+    let password: String
+}
+
 struct AuthTokenEnvelopeDTO: Codable, Sendable {
     let token: String?
     let user: BetterAuthUserDTO

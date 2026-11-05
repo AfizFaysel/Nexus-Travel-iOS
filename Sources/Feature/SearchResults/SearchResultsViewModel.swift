@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 struct SearchResultsUiState: Equatable, Sendable {
@@ -9,9 +10,16 @@ struct SearchResultsUiState: Equatable, Sendable {
     var selectedFilters: Set<SearchFilter> = []
     var sortOption: SortOption = .recommended
     var errorMessage: String?
+    var unavailableOfferNotice: String?
 
     var resultCount: Int { visibleFlights.count }
     func resultCountLabel() -> String { "\(resultCount) \(resultCount == 1 ? "flight" : "flights") found" }
+    func freshnessWarning(at now: Date) -> String? {
+        guard let expiry = visibleFlights.compactMap({ $0.reference.expiresAt }).min() else { return nil }
+        if expiry <= now { return "Some fares have expired. Search again before choosing a flight." }
+        if expiry.timeIntervalSince(now) <= 120 { return "Fares may change soon. Search again for current options." }
+        return nil
+    }
 }
 
 enum SearchResultsUiEvent: Equatable, Sendable {
@@ -34,6 +42,7 @@ final class SearchResultsViewModel {
     private let repository: any SearchResultsRepository
     private var isLoading = false
     private var navigationEvents: [SearchResultsNavigationEvent] = []
+    private var unavailableOfferIds: Set<String> = []
 
     init(searchId: String, repository: any SearchResultsRepository) {
         self.searchId = searchId
@@ -67,7 +76,12 @@ final class SearchResultsViewModel {
         case .backClicked: navigationEvents.append(.back)
         case .modifyClicked: navigationEvents.append(.toModifySearch)
         case .nearbyDatesClicked: navigationEvents.append(.toNearbyDates)
-        case let .flightCardClicked(reference): navigationEvents.append(.toFlightDetails(reference))
+        case let .flightCardClicked(reference):
+            if let expiry = reference.expiresAt, expiry <= .now {
+                uiState.unavailableOfferNotice = "This fare has expired. Search again for current flights."
+            } else {
+                navigationEvents.append(.toFlightDetails(reference))
+            }
         case .retryClicked: try? await loadResults()
         case let .filterToggled(filter): toggle(filter)
         case let .sortChanged(sort): update(sort: sort)
@@ -81,10 +95,19 @@ final class SearchResultsViewModel {
         navigationEvents.isEmpty ? nil : navigationEvents.removeFirst()
     }
 
+    func markOfferUnavailable(_ reference: FlightOfferReference) {
+        guard reference.searchId == searchId else { return }
+        unavailableOfferIds.insert(reference.offerId)
+        uiState.allFlights.removeAll { $0.reference.offerId == reference.offerId }
+        uiState.unavailableOfferNotice = "That fare is no longer available. Choose another flight."
+        updateVisible()
+    }
+
     private func apply(_ result: SearchResultsResult) {
         switch result {
         case let .success(summary, offers):
-            let mapped = offers.map { $0.toSearchResultUiOffer(tripType: summary.tripType) }
+            let mapped = offers.filter { !unavailableOfferIds.contains($0.id) }
+                .map { $0.toSearchResultUiOffer(tripType: summary.tripType) }
             if summary.cheapestFirst {
                 uiState.sortOption = .bestPrice
                 uiState.selectedFilters.insert(.bestPrice)

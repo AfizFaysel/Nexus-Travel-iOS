@@ -56,10 +56,10 @@ struct RemoteHomeRepositoriesTests {
         #expect(content.origin.code == "ADD" && content.destination.code == "DXB")
         #expect(content.departureDate == "Aug 1" && content.returnDate == "Add return")
         #expect(content.travelersLabel == "1 Adult" && content.cabinClass == "Economy")
-        #expect(content.trendingEscapes.count == 4)
-        #expect(content.trendingEscapes[0].startingPrice == Money(amount: 0, currency: "ETB", formatted: ""))
-        #expect(content.trendingEscapes[3].airport.code == "DXB" && content.trendingEscapes[3].airport.name == "Unpaired Package")
-        #expect(content.recentSearches.map(\.destinationCode) == ["NBO", "DXB", "NRT"])
+        #expect(content.trendingEscapes.map(\.id) == ["d1", "d2", "d3"])
+        #expect(content.trendingEscapes[0].airport.code == "NBO")
+        #expect(content.trendingEscapes[1].airport.name == "Paris")
+        #expect(content.trendingEscapes[2].tags == ["Night markets"])
         let requests = await loader.requests
         #expect(requests.map { $0.url?.path } == ["/api/v1/mobile/airports/popular", "/api/v1/mobile/explore"])
         #expect(requests[0].url?.query == "limit=20")
@@ -99,7 +99,7 @@ struct RemoteHomeRepositoriesTests {
         let defaults = RemoteHomeRepository(transport: HTTPTransport(loader: HomeStubLoader([.response(200, HomeContractFixtures.emptyAirports), .response(200, HomeContractFixtures.emptyExplore)])))
         guard case let .success(empty) = try await defaults.getHomeContent() else { Issue.record("Expected success"); return }
         #expect(empty.origin.code == "ADD" && empty.destination.code == "DXB")
-        #expect(empty.trendingEscapes.isEmpty && empty.recentSearches.isEmpty)
+        #expect(empty.trendingEscapes.isEmpty)
     }
 
     @Test(arguments: [HTTPTransportError.networkUnavailable, .timedOut])

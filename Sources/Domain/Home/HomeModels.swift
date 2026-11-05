@@ -32,14 +32,6 @@ struct TrendingEscape: Equatable, Hashable, Codable, Sendable {
     let imageName: String
 }
 
-/// Previously submitted route shown on home.
-struct RecentSearch: Equatable, Hashable, Codable, Sendable {
-    let id: String
-    let originCode: String
-    let destinationCode: String
-    let dateRange: String
-}
-
 /// Supported flight itinerary shapes.
 enum TripType: String, Equatable, Hashable, Codable, Sendable {
     case oneWay
@@ -128,5 +120,4 @@ struct HomeContent: Equatable, Hashable, Codable, Sendable {
     let travelersLabel: String
     let cabinClass: String
     let trendingEscapes: [TrendingEscape]
-    let recentSearches: [RecentSearch]
 }

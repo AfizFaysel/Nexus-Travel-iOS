@@ -24,6 +24,21 @@ struct TripsGuestStateTests {
         #expect(!viewModel.state.refreshing)
         #expect(viewModel.state.error != nil)
     }
+
+    @Test func logoutClearsTripsStateAndAllowsFreshLoad() async throws {
+        let viewModel = TripsViewModel(repository: GuestTripsRepository(), authRepository: AuthenticatedLocalSessionRepository())
+        try await viewModel.loadIfNeeded()
+
+        #expect(viewModel.state.access == .authenticated)
+
+        viewModel.clearForLogout()
+
+        #expect(viewModel.state.access == .guest)
+        #expect(viewModel.state.trips.isEmpty)
+        #expect(!viewModel.state.loading)
+        try await viewModel.loadIfNeeded()
+        #expect(viewModel.state.access == .authenticated)
+    }
 }
 
 private struct GuestTripsRepository: TripsRepository {

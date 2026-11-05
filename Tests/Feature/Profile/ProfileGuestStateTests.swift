@@ -13,6 +13,13 @@ struct ProfileGuestStateTests {
         #expect(!viewModel.state.refreshing)
     }
 
+    @Test func passwordResetClearsCachedAuthenticatedProfile() {
+        let viewModel = ProfileViewModel(repository: GuestProfileRepository(), authRepository: FailingLocalSessionRepository())
+        viewModel.clearForPasswordReset()
+
+        #expect(viewModel.state.access == .guest)
+    }
+
     @Test func unexpectedProfileFailureShowsRecoverableError() async {
         let viewModel = ProfileViewModel(repository: ThrowingProfileRepository(), authRepository: AuthenticatedLocalSessionRepository())
 
@@ -64,7 +71,7 @@ private struct ThrowingProfileRepository: ProfileRepository {
 
 struct AuthenticatedLocalSessionRepository: AuthRepository {
     func signInEmail(request: SignInRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> { .failure(.unknown) }
     func getSession() async throws -> AuthResult<AuthSession> { .failure(.unknown) }
     func getLocalSession() async throws -> AuthSession? {
         AuthSession(
@@ -80,7 +87,7 @@ struct AuthenticatedLocalSessionRepository: AuthRepository {
 
 struct FailingLocalSessionRepository: AuthRepository {
     func signInEmail(request: SignInRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> { .failure(.unknown) }
     func getSession() async throws -> AuthResult<AuthSession> { .failure(.unauthenticated) }
     func getLocalSession() async throws -> AuthSession? { throw LocalSessionError.readFailed }
     func requestPasswordReset(email: String) async throws -> AuthResult<Void> { .failure(.unknown) }
@@ -99,7 +106,7 @@ private struct ProfileRepositoryStub: ProfileRepository {
 
 private struct FailingSignOutRepository: AuthRepository {
     func signInEmail(request: SignInRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
-    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSession> { .failure(.unknown) }
+    func signUpEmail(request: SignUpRequest) async throws -> AuthResult<AuthSignUpResult> { .failure(.unknown) }
     func getSession() async throws -> AuthResult<AuthSession> { .failure(.unauthenticated) }
     func getLocalSession() async throws -> AuthSession? {
         AuthSession(

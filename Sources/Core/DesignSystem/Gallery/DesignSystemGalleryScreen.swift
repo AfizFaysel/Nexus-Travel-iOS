@@ -90,6 +90,13 @@ struct DesignSystemGalleryScreen: View {
 
     private var feedback: some View {
         VStack(alignment: .leading, spacing: NexusSpacing.space24) {
+            NexusBanner(text: "Could not update. Showing saved deals.", status: .error, trailingAction: {
+                NexusTextButton("Try again", action: {})
+            })
+            NexusFeedbackPanel(
+                title: "Could not load flight details", message: "Check your connection and try again.",
+                primaryActionLabel: "Try again", onPrimaryAction: {}
+            )
             ForEach(GalleryStatus.allCases, id: \.self) { item in
                 NexusBanner(text: item.banner, status: item.status, leadingContent: {
                     NexusIcon(name: item.icon, size: NexusIconSize.sm)

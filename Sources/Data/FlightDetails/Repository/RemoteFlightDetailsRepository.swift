@@ -12,7 +12,9 @@ struct RemoteFlightDetailsRepository: FlightDetailsRepository {
             case 200..<300:
                 return try FlightDetailsResponseMapper.map(JSONDecoder().decode(PriceOfferResponseDTO.self, from: response.data), reference: reference)
             case 401: return .authRequired
-            case 404, 503: return .offerUnavailable
+            case 404: return .offerUnavailable
+            case 503:
+                return errorCode(in: response.data) == "OFFER_UNAVAILABLE" ? .offerUnavailable : .confirmationUnavailable
             case 410: return .offerExpired
             default: return .unknownError
             }
@@ -24,4 +26,10 @@ struct RemoteFlightDetailsRepository: FlightDetailsRepository {
             return .unknownError
         }
     }
+
+    private func errorCode(in data: Data) -> String? {
+        (try? JSONDecoder().decode(FlightDetailsErrorResponse.self, from: data))?.code
+    }
 }
+
+private struct FlightDetailsErrorResponse: Decodable { let code: String }

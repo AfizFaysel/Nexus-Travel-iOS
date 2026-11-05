@@ -46,6 +46,7 @@ struct NexusComponentContractsTests {
         }
 
         #expect(NexusIconButtonVariant.allCases.count == 3)
+        #expect(NexusIconName.continue.source == .custom("continue-outline"))
     }
 
     @Test("Fields construct standard and auth state combinations")
@@ -120,5 +121,18 @@ struct NexusComponentContractsTests {
         }
 
         #expect(NexusStatus.allCases.count == 8)
+    }
+
+    @Test("Feedback panel constructs blocking and recoverable states")
+    @MainActor
+    func feedbackPanelConstructsBlockingAndRecoverableStates() {
+        _ = NexusFeedbackPanel(title: "Could not load", message: "Check your connection.")
+        _ = NexusFeedbackPanel(
+            title: "Receipt submitted", message: "Your trip is being reviewed.", status: .success
+        )
+        _ = NexusFeedbackPanel(
+            title: "Trips couldn't refresh", message: "Saved tickets remain available.",
+            primaryActionLabel: "Try again", onPrimaryAction: {}
+        )
     }
 }

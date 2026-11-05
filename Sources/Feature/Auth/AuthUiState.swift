@@ -96,6 +96,41 @@ public struct SignupUiState: Equatable, Sendable {
     }
 }
 
+/// Fields and feedback for setting a replacement password.
+struct PasswordResetUiState: Equatable, Sendable {
+    var password = ""
+    var confirmPassword = ""
+    var isSubmitting = false
+    var isSuccess = false
+    var message: String?
+    var passwordError: String?
+    var confirmPasswordError: String?
+}
+
+enum PasswordCodeStep: Equatable, Sendable {
+    case request
+    case code
+    case password
+    case complete
+    case uncertain
+}
+
+struct PasswordCodeUiState: Equatable, Sendable {
+    var step: PasswordCodeStep = .request
+    var email = ""
+    var code = ""
+    var requiresNewCode = false
+    var password = ""
+    var confirmPassword = ""
+    var isSubmitting = false
+    var message: String?
+    var messageIsError = false
+    var emailError: String?
+    var codeError: String?
+    var passwordError: String?
+    var confirmPasswordError: String?
+}
+
 /// Authentication form currently shown to the user.
 public enum AuthMode: Equatable, Sendable {
     /// Login form is active.
@@ -110,6 +145,8 @@ public enum AuthGateState: Equatable, Sendable {
     case checking
     /// No existing authenticated session is available.
     case unauthenticated
+    /// Credentials were accepted for an account that still needs email verification.
+    case verificationPending(email: String)
     /// Existing authenticated session is available.
     case authenticated(AuthSession)
 }

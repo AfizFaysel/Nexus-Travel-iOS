@@ -5,12 +5,14 @@ struct AirlineBrand: Equatable, Hashable, Codable, Sendable {
     let code: String
     let name: String
     let logoAssetName: String?
+    let logoURL: URL?
 
     /// Creates airline identity.
-    init(code: String, name: String, logoAssetName: String? = nil) {
+    init(code: String, name: String, logoAssetName: String? = nil, logoURL: URL? = nil) {
         self.code = code
         self.name = name
         self.logoAssetName = logoAssetName
+        self.logoURL = logoURL
     }
 }
 

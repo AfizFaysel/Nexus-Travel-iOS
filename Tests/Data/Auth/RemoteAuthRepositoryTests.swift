@@ -8,6 +8,13 @@ struct RemoteAuthRepositoryTests {
         #expect(AuthEndpoints.signUpEmail == "/api/auth/sign-up/email")
         #expect(AuthEndpoints.session == "/api/auth/get-session")
         #expect(AuthEndpoints.passwordResetRequest == "/api/auth/request-password-reset")
+        #expect(AuthEndpoints.verifyEmail == "/api/auth/verify-email")
+        #expect(AuthEndpoints.passwordReset == "/api/auth/reset-password")
+        #expect(AuthEndpoints.resendVerificationEmail == "/api/auth/send-verification-email")
+        #expect(AuthEndpoints.sendVerificationCode == "/api/auth/email-otp/send-verification-otp")
+        #expect(AuthEndpoints.verifyEmailCode == "/api/auth/email-otp/verify-email")
+        #expect(AuthEndpoints.requestPasswordResetCode == "/api/auth/email-otp/request-password-reset")
+        #expect(AuthEndpoints.resetPasswordCode == "/api/auth/email-otp/reset-password")
         #expect(AuthEndpoints.signOut == "/api/auth/sign-out")
     }
 
@@ -52,6 +59,71 @@ struct RemoteAuthRepositoryTests {
         #expect(json.email == "selam@example.com")
         #expect(json.password == "password123")
         #expect(json.acceptedTerms == nil)
+    }
+
+    @Test func signupWithNullTokenReturnsPendingAndDoesNotWriteSession() async throws {
+        let loader = AuthStubLoader(responses: [.response(200, AuthContractFixtures.signupPending, [:])])
+        let store = AuthFakeSessionStore()
+
+        let result = try await makeRepository(loader: loader, store: store).signUpEmail(request: .init(
+            fullName: "Selam Abebe", email: "selam@example.com", password: "password123", acceptedTerms: true
+        ))
+
+        guard case let .success(signupResult) = result else {
+            Issue.record("Expected verification-pending account result")
+            return
+        }
+        #expect(signupResult == .verificationPending(email: "selam@example.com"))
+        #expect(await store.writeCount == 0)
+        #expect(await loader.requests.count == 1)
+    }
+
+    @Test func signupWithTokenAuthenticatesDuringVerificationRollout() async throws {
+        let loader = AuthStubLoader(responses: [.response(200, AuthContractFixtures.signupTokenForUnverifiedUser, [:])])
+        let store = AuthFakeSessionStore()
+
+        let result = try await makeRepository(loader: loader, store: store).signUpEmail(request: .init(
+            fullName: "Selam Abebe", email: "selam@example.com", password: "password123", acceptedTerms: true
+        ))
+
+        guard case let .success(signupResult) = result else {
+            Issue.record("Expected authenticated signup result")
+            return
+        }
+        guard case let .authenticated(session) = signupResult else {
+            Issue.record("Expected token-bearing signup to authenticate")
+            return
+        }
+        #expect(session.tokens?.accessToken == "must-not-store")
+        #expect(await store.writeCount == 1)
+    }
+
+    @Test func verificationUsesNativeAuthEndpointAndTokenQuery() async throws {
+        let loader = AuthStubLoader(responses: [.response(200, Data(#"{"status":true}"#.utf8), [:])])
+        let result = try await makeRepository(loader: loader).verifyEmail(token: "verification-token")
+        let request = try #require(await loader.requests.first)
+        guard case .success = result else {
+            Issue.record("Expected verification success")
+            return
+        }
+        #expect(request.url?.path == AuthEndpoints.verifyEmail)
+        #expect(URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?.queryItems == [URLQueryItem(name: "token", value: "verification-token")])
+    }
+
+    @Test func passwordResetUsesTokenBodyAndClearsLocalSessionOnSuccess() async throws {
+        let loader = AuthStubLoader(responses: [.response(200, Data(#"{"status":true}"#.utf8), [:])])
+        let store = AuthFakeSessionStore(session: storedSession(expiresAt: .distantFuture, token: "existing-token"))
+        let result = try await makeRepository(loader: loader, store: store).resetPassword(token: "reset-token", newPassword: "newpassword123")
+        let request = try #require(await loader.requests.first)
+        let body = try #require(request.httpBody)
+        let fields = try JSONDecoder().decode([String: String].self, from: body)
+        guard case .success = result else {
+            Issue.record("Expected password reset success")
+            return
+        }
+        #expect(request.url?.path == AuthEndpoints.passwordReset)
+        #expect(fields == ["token": "reset-token", "newPassword": "newpassword123"])
+        #expect(await store.current == nil)
     }
 
     @Test func validationShortCircuitsTransportAndStorage() async throws {
@@ -205,16 +277,74 @@ struct RemoteAuthRepositoryTests {
         }
     }
 
-    @Test func disabledPasswordResetMapsUnknownAndUsesCurrentRoute() async throws {
+    @Test func passwordResetRequestUsesGenericPrivacyPreservingContract() async throws {
         let loader = AuthStubLoader(responses: [
-            .response(400, AuthContractFixtures.error(code: "RESET_PASSWORD_DISABLED"), [:])
+            .response(200, Data(#"{"status":true}"#.utf8), [:])
         ])
 
         let result = try await makeRepository(loader: loader).requestPasswordReset(email: " selam@example.com ")
 
-        #expect(failure(result) == .unknown)
+        guard case .success = result else {
+            Issue.record("Expected generic success response")
+            return
+        }
         let request = try #require(await loader.requests.first)
         #expect(request.url?.path == AuthEndpoints.passwordResetRequest)
+        let body = try #require(request.httpBody)
+        #expect(try JSONDecoder().decode([String: String].self, from: body) == ["email": "selam@example.com"])
+    }
+
+    @Test func verificationCodeUsesNativeOTPContractWithoutSessionWrite() async throws {
+        let loader = AuthStubLoader(responses: [.response(200, Data(#"{"status":true}"#.utf8), [:])])
+        let store = AuthFakeSessionStore()
+        let result = try await makeRepository(loader: loader, store: store).verifyEmailCode(
+            email: " selam@example.com ", code: "123456"
+        )
+        guard case .success = result else {
+            Issue.record("Expected code verification success")
+            return
+        }
+        let request = try #require(await loader.requests.first)
+        #expect(request.url?.path == AuthEndpoints.verifyEmailCode)
+        #expect(try JSONDecoder().decode([String: String].self, from: #require(request.httpBody)) == [
+            "email": "selam@example.com", "otp": "123456"
+        ])
+        #expect(await store.writeCount == 0)
+    }
+
+    @Test func codeRequestUsesOnlyVerificationPurpose() async throws {
+        let loader = AuthStubLoader(responses: [.response(200, Data(#"{"status":true}"#.utf8), [:])])
+        _ = try await makeRepository(loader: loader).sendVerificationCode(email: "selam@example.com")
+        let request = try #require(await loader.requests.first)
+        #expect(request.url?.path == AuthEndpoints.sendVerificationCode)
+        #expect(try JSONDecoder().decode([String: String].self, from: #require(request.httpBody)) == [
+            "email": "selam@example.com", "type": "email-verification"
+        ])
+    }
+
+    @Test func resetCodeRequestUsesEmailAndResetClearsSession() async throws {
+        let loader = AuthStubLoader(responses: [
+            .response(200, Data(#"{"status":true}"#.utf8), [:]),
+            .response(200, Data(#"{"status":true}"#.utf8), [:])
+        ])
+        let store = AuthFakeSessionStore(session: storedSession(expiresAt: .distantFuture, token: "existing-token"))
+        let repository = makeRepository(loader: loader, store: store)
+        _ = try await repository.requestPasswordResetCode(email: " selam@example.com ")
+        let result = try await repository.resetPasswordCode(
+            email: "selam@example.com", code: "123456", newPassword: "newpassword123"
+        )
+        guard case .success = result else {
+            Issue.record("Expected reset success")
+            return
+        }
+        let requests = await loader.requests
+        #expect(requests[0].url?.path == AuthEndpoints.requestPasswordResetCode)
+        #expect(requests[1].url?.path == AuthEndpoints.resetPasswordCode)
+        #expect(try JSONDecoder().decode([String: String].self, from: #require(requests[0].httpBody)) == ["email": "selam@example.com"])
+        #expect(try JSONDecoder().decode([String: String].self, from: #require(requests[1].httpBody)) == [
+            "email": "selam@example.com", "otp": "123456", "password": "newpassword123"
+        ])
+        #expect(await store.current == nil)
     }
 
     private func makeRepository(

@@ -41,10 +41,33 @@ struct RemoteFlightDetailsRepositoryTests {
         #expect(details.fareRules.sections.isEmpty)
     }
 
-    @Test(arguments: [(401, FlightDetailsResult.authRequired), (404, .offerUnavailable), (410, .offerExpired), (503, .offerUnavailable), (500, .unknownError)])
+    @Test(arguments: [(401, FlightDetailsResult.authRequired), (404, .offerUnavailable), (410, .offerExpired), (503, .confirmationUnavailable), (500, .unknownError)])
     func statusMatrix(status: Int, expected: FlightDetailsResult) async throws {
         let repo = RemoteFlightDetailsRepository(transport: HTTPTransport(loader: FlightDetailsStubLoader(.response(status, Data()))))
         #expect(try await repo.priceOffer(reference: reference()) == expected)
+    }
+
+    @Test func decodesStructuredBaggageWithoutBreakingLegacyPayloads() throws {
+        let legacy = try JSONDecoder().decode(BaggageSummaryDTO.self, from: Data(
+            #"{"cabin":"1 piece","checked":"30 kg","included":true,"detail":""}"#.utf8
+        ))
+        #expect(legacy.allowances?.isEmpty != false)
+        let structured = try JSONDecoder().decode(BaggageSummaryDTO.self, from: Data(
+            #"{"cabin":"1 piece · 7 kg","checked":"30 kg","included":true,"detail":"Cabin bag: up to 115 cm total dimensions.","allowances":[{"baggageType":"CarryOn","inclusion":"UNKNOWN","quantity":1,"weight":null,"passengerTypeCodes":["ADT"],"segmentSequences":[]}] }"#.utf8
+        ))
+        #expect(structured.allowances?.first?.baggageType == "CarryOn")
+        #expect(structured.cabin == "1 piece · 7 kg")
+    }
+
+    @Test func distinguishesUnavailableFromTemporaryConfirmationFailure() async throws {
+        let unavailable = RemoteFlightDetailsRepository(transport: HTTPTransport(loader: FlightDetailsStubLoader(
+            .response(503, Data(#"{"code":"OFFER_UNAVAILABLE"}"#.utf8))
+        )))
+        let temporary = RemoteFlightDetailsRepository(transport: HTTPTransport(loader: FlightDetailsStubLoader(
+            .response(503, Data(#"{"code":"FARE_CONFIRMATION_FAILED"}"#.utf8))
+        )))
+        #expect(try await unavailable.priceOffer(reference: reference()) == .offerUnavailable)
+        #expect(try await temporary.priceOffer(reference: reference()) == .confirmationUnavailable)
     }
 
     @Test(arguments: [HTTPTransportError.networkUnavailable, .timedOut])

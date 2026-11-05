@@ -66,8 +66,12 @@ struct SeatSelectionScreen: View {
                 if viewModel.state.segments.count > 1 { segmentTabs }
                 passengerTabs
                 if let message = viewModel.state.message {
-                    Text(message).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Retry") { send(.retry) }
+                    NexusFeedbackPanel(
+                        title: viewModel.state.canRetryLoad ? "Seat map temporarily unavailable" : "Seat selection needs attention",
+                        message: message,
+                        primaryActionLabel: viewModel.state.canRetryLoad ? "Try again" : nil,
+                        onPrimaryAction: viewModel.state.canRetryLoad ? { send(.retry) } : nil
+                    )
                 }
                 if let segment = viewModel.state.segments[safe: viewModel.state.activeSegmentIndex] {
                     aircraft(segment)

@@ -48,6 +48,7 @@ struct NexusIconActionButton<Icon: View>: View {
             }
             .frame(width: NexusIconSize.md, height: NexusIconSize.md)
             .frame(width: NexusLayout.touchRecommended, height: NexusLayout.touchRecommended)
+            .contentShape(Rectangle())
         }
         .buttonStyle(NexusIconActionButtonStyle(variant: variant))
         .accessibilityLabel(Text(accessibilityLabel))

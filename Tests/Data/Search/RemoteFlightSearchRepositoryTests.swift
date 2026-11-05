@@ -19,7 +19,8 @@ struct RemoteFlightSearchRepositoryTests {
         let dto = try JSONDecoder().decode(SearchResponseDTO.self, from: SearchContractFixtures.success)
         let mapped = try SearchResponseMapper.map(dto, request: request())
         let offer = try #require(mapped.offers.first)
-        #expect(offer.airline == AirlineBrand(code: "XY", name: "Example Air", logoAssetName: "example"))
+        #expect(offer.airline == AirlineBrand(code: "XY", name: "Example Air", logoAssetName: "example",
+            logoURL: URL(string: "https://signed.example/airlines/example.png")))
         #expect(offer.price.amount == 15875 && offer.price.currency == "USD" && offer.price.formatted.hasPrefix("USD "))
         #expect(offer.seatsLeft == 3 && offer.reference.searchId == "session-1")
         #expect(offer.reference.provider == .travelportGds && offer.source == "TRAVELPORT")

@@ -37,6 +37,11 @@ public enum AuthValidator {
         isValidEmail(email) ? [:] : [.email: invalidEmailMessage]
     }
 
+    /// Returns a password field error when a replacement password is too short.
+    public static func validateNewPassword(_ password: String) -> String? {
+        password.utf16.count >= minimumPasswordLength ? nil : invalidPasswordMessage
+    }
+
     private static let minimumPasswordLength = 8
     private static let invalidEmailMessage = "Please enter a valid email address."
     private static let invalidPasswordMessage = "Password must be at least 8 characters."

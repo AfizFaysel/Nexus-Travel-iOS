@@ -11,6 +11,7 @@ struct FlightDetailsErrorPresenterTests {
     @Test func mapsEveryFailureToExactCopyAndAction() {
         let cases: [(FlightDetailsResult, FlightDetailsErrorUi)] = [
             (.networkUnavailable, FlightDetailsErrorUi(title: "Connection lost", message: "Check your network and retry.", primaryAction: .retry)),
+            (.confirmationUnavailable, FlightDetailsErrorUi(title: "Fare not confirmed", message: "We couldn’t confirm this fare. Try again.", primaryAction: .retry)),
             (.unknownError, FlightDetailsErrorUi(title: "Could not load flight details", message: "Try again.", primaryAction: .retry)),
             (.offerExpired, FlightDetailsErrorUi(title: "Fare expired", message: "This fare expired. Choose another flight.", primaryAction: .chooseAnotherFlight)),
             (.offerUnavailable, FlightDetailsErrorUi(title: "Fare unavailable", message: "This fare is no longer available. Choose another flight.", primaryAction: .chooseAnotherFlight)),

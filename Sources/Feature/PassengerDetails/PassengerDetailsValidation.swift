@@ -3,14 +3,16 @@ import Foundation
 /// Validates passenger form fields against travel and current dates.
 enum PassengerDetailsValidator {
     static func validate(form: PassengerDetailsFormState, details: FlightDetails,
+                         includeContact: Bool = true, passengerType: PassengerType = .adult,
                          today: LocalDate) -> PassengerValidationState {
         validateFields(form: form, details: details, fields: Set(PassengerDetailsField.allCases),
-                       isSubmit: true, today: today)
+                       isSubmit: true, includeContact: includeContact, passengerType: passengerType, today: today)
     }
 
     static func validateFields(
         form: PassengerDetailsFormState, details: FlightDetails, fields: Set<PassengerDetailsField>,
-        isSubmit: Bool = false, today: LocalDate
+        isSubmit: Bool = false, includeContact: Bool = true,
+        passengerType: PassengerType = .adult, today: LocalDate
     ) -> PassengerValidationState {
         var fieldErrors: [PassengerDetailsField: String] = [:]
         var fieldMessages: [String] = []
@@ -38,7 +40,15 @@ enum PassengerDetailsValidator {
             groupField: .dateOfBirth, requiredMessage: "Date of birth is required."
         ) { date in
             guard let date else { return "Enter a valid date of birth." }
-            return date > today ? "Date of birth cannot be in the future." : nil
+            if date > today { return "Date of birth cannot be in the future." }
+            let years = details.departureDate.year - date.year
+                - ((details.departureDate.month, details.departureDate.day) < (date.month, date.day) ? 1 : 0)
+            switch passengerType {
+            case .adult where years < 12: return "Adult must be age 12 or older on departure."
+            case .child where !(2...11).contains(years): return "Child must be age 2–11 on departure."
+            case .infant where !(0...1).contains(years): return "Infant must be under age 2 on departure."
+            default: return nil
+            }
         }
         birth.fieldErrors.forEach { fieldErrors[$0.key] = $0.value }
         fieldMessages.append(contentsOf: birth.fieldMessages)
@@ -61,13 +71,13 @@ enum PassengerDetailsValidator {
         if fields.contains(.passportDocument), form.passportDocument == nil {
             addField(.passportDocument, "Passport document is required.")
         }
-        if fields.contains(.email), let message = PassengerContactValidator.emailError(form.email) {
+        if includeContact, fields.contains(.email), let message = PassengerContactValidator.emailError(form.email) {
             addField(.email, message)
         }
-        if fields.contains(.phoneCountry), form.countryDialCode.isBlank {
+        if includeContact, fields.contains(.phoneCountry), form.countryDialCode.isBlank {
             addField(.phoneCountry, "Select phone country code.")
         }
-        if fields.contains(.phoneNumber),
+        if includeContact, fields.contains(.phoneNumber),
            let message = PassengerContactValidator.phoneError(dialCode: form.countryDialCode, value: form.phoneNumber) {
             addField(.phoneNumber, message)
         }

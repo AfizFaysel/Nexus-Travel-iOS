@@ -101,11 +101,11 @@ struct AuthErrorPresenterTests {
     @Test(arguments: [
         (AuthError.invalidCredentials, "This account cannot be created. Try another email."),
         (AuthError.emailNotVerified, "Verify your email to continue."),
-        (AuthError.networkUnavailable, "You appear to be offline. Check your connection and try again."),
+        (AuthError.networkUnavailable, "We couldn’t confirm whether your account was created. Check your inbox or try signing in before signing up again."),
         (AuthError.rateLimited, "Too many attempts. Try again later."),
         (AuthError.unauthenticated, "Your session expired. Sign in again."),
         (AuthError.sessionExpired, "Your session expired. Sign in again."),
-        (AuthError.unknown, "Something went wrong. Please try again.")
+        (AuthError.unknown, "We couldn’t confirm whether your account was created. Check your inbox or try signing in before signing up again.")
     ])
     func signupMessagesMatchAndroid(_ error: AuthError, _ message: String) {
         let state = SignupUiState(

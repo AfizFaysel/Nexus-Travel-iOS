@@ -40,18 +40,30 @@ enum AuthMapper {
     static func error(_ error: AuthErrorDTO, statusCode: Int) -> AuthError {
         if statusCode == 429 { return .rateLimited }
         switch error.code {
-        case "VALIDATION":
+        case "VALIDATION", "VALIDATION_ERROR":
             return .validation(fieldErrors(from: error.fieldErrors ?? [:]))
         case "INVALID_EMAIL":
-            return .validation([.email: error.message])
+            return .validation([.email: "Enter a valid email address."])
         case "PASSWORD_TOO_SHORT":
-            return .validation([.password: error.message])
+            return .validation([.password: "Password must be at least 8 characters."])
+        case "PASSWORD_TOO_LONG":
+            return .validation([.password: "Password is too long."])
+        case "INVALID_PASSWORD":
+            return .validation([.password: "Enter a valid password."])
+        case "TOO_MANY_REQUESTS":
+            return .rateLimited
         case "INVALID_EMAIL_OR_PASSWORD", "INVALID_CREDENTIALS":
             return .invalidCredentials
         case "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", "USER_ALREADY_EXISTS", "EMAIL_ALREADY_EXISTS":
             return .emailAlreadyUsed
         case "EMAIL_NOT_VERIFIED":
             return .emailNotVerified
+        case "INVALID_OTP":
+            return .invalidCode
+        case "OTP_EXPIRED":
+            return .expiredCode
+        case "TOO_MANY_ATTEMPTS":
+            return .tooManyCodeAttempts
         case "UNAUTHENTICATED":
             return .unauthenticated
         case "SESSION_EXPIRED":

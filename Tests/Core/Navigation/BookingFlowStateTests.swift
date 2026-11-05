@@ -62,6 +62,21 @@ struct BookingFlowStateTests {
         #expect(!state.consumePassengerSubmissionAfterAuthentication())
     }
 
+    @Test func passengerAuthenticationRequestPreservesSubmissionForResume() throws {
+        let details = try makeDetails()
+        let state = BookingFlowState()
+        state.selectOffer(details.reference)
+        #expect(state.acceptPassengerDetails(details))
+        #expect(state.beginPassengerSubmission() == .authenticate)
+
+        state.preparePassengerSubmissionAuthentication()
+
+        #expect(state.passengerDetails == details)
+        #expect(state.completeAuthentication())
+        #expect(state.consumePassengerSubmissionAfterAuthentication())
+        #expect(!state.consumePassengerSubmissionAfterAuthentication())
+    }
+
     @Test func authenticatedSubmitContinuesWithoutAuth() throws {
         let details = try makeDetails()
         let state = BookingFlowState(authenticated: true)

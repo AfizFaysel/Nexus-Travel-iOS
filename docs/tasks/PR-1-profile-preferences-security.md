@@ -19,7 +19,7 @@ Replace Profile placeholder with guest/authenticated account hub, editable profi
 - Name is trimmed and 2–80 characters; optional phone is empty or E.164 before network.
 - Preferences persist locally first, then synchronize exact backend-supported language, currency, theme, airport, and notification fields.
 - Theme applies at app root. Notification toggles request native authorization only when enabling push and provide denial fallback.
-- Security shows current device/email verification; disabled backend password reset is represented honestly. Delete-account navigation remains PR-2.
+- Security shows current device/email verification and starts the same generic password-reset request used on Login. Delete-account navigation remains PR-2.
 - Cancellation restores valid state; duplicate saves cannot overlap; stale responses cannot overwrite newer state.
 - Icon-only controls are labeled; Dynamic Type-safe native layout; no placeholder/debug copy.
 - Tests cover routes/auth/DTOs, validation, traveler masking, local preference persistence, sync rollback/error, state transitions, logout, cancellation, and stale-response protection.

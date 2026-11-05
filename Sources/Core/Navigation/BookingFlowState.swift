@@ -44,6 +44,12 @@ final class BookingFlowState {
         return .authenticate
     }
 
+    func preparePassengerSubmissionAuthentication() {
+        authenticated = false
+        submitPassengerDetailsAfterAuth = false
+        awaitsAuthenticationForPassengerSubmission = true
+    }
+
     @discardableResult
     func completeAuthentication() -> Bool {
         authenticated = true

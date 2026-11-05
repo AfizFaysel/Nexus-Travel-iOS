@@ -94,4 +94,9 @@ struct AuthValidationTests {
             ]
         )
     }
+
+    @Test func replacementPasswordUsesSameUtf16MinimumAsSignup() {
+        #expect(AuthValidator.validateNewPassword("1234567") == "Password must be at least 8 characters.")
+        #expect(AuthValidator.validateNewPassword("12345678") == nil)
+    }
 }

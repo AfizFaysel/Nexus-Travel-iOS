@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import NexusTravel
 
@@ -114,6 +115,38 @@ struct RouterTests {
     }
 
     @Test
+    func showExploreChangesFilterAndTabWithoutChangingExploreHistory() {
+        let router = Router()
+        router.select(.explore)
+        router.push(.destinationDetail(DestinationDetailRoute(destinationId: "destination-1")))
+        router.select(.home)
+
+        router.showExplore(filter: .packages)
+
+        #expect(router.selectedTab == .explore)
+        #expect(router.exploreFilter == .packages)
+        #expect(router.explorePath == [.destinationDetail(DestinationDetailRoute(destinationId: "destination-1"))])
+        #expect(router.homePath.isEmpty)
+    }
+
+    @Test
+    func rapidTabSelectionDoesNotMutateUnselectedHistories() {
+        let router = Router()
+        router.push(.searchResults(SearchResultsRoute(searchId: "search-1")))
+        router.select(.explore)
+        router.push(.packageDetail(PackageDetailRoute(packageId: "package-1")))
+
+        for tab in [MainTab.trips, .profile, .home, .explore, .trips, .home] {
+            router.select(tab)
+        }
+
+        #expect(router.homePath == [.searchResults(SearchResultsRoute(searchId: "search-1"))])
+        #expect(router.explorePath == [.packageDetail(PackageDetailRoute(packageId: "package-1"))])
+        #expect(router.tripsPath.isEmpty)
+        #expect(router.profilePath.isEmpty)
+    }
+
+    @Test
     func tripsTabUsesTicketIcon() {
         #expect(MainTab.trips.icon == .trips)
         #expect(MainTab.trips.icon.systemName == "ticket")
@@ -145,5 +178,18 @@ struct RouterTests {
 
         #expect(router.authPresentation == nil)
         #expect(router.homePath == [.passengerDetails(PassengerDetailsRoute())])
+    }
+
+    @Test
+    func authLinkPresentationReplacesCredentialSheetAndIgnoresDuplicateTap() throws {
+        let router = Router()
+        let url = try #require(URL(string: "https://api.travelwithnexus.com/auth/password/reset?token=opaque-token"))
+        router.presentAuthentication(for: .profile)
+
+        router.handleAuthLink(url)
+        router.handleAuthLink(url)
+
+        #expect(router.authPresentation == nil)
+        #expect(router.authLinkPresentation == .resetPassword(token: "opaque-token"))
     }
 }

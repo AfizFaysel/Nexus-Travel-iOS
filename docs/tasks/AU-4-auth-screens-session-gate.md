@@ -10,10 +10,12 @@ Read completely: Android `feature/auth/Auth{ViewModel,UiState,Screens,ErrorPrese
 
 ## Scope
 
-- Observable `AuthViewModel`: session check, login/signup mode, field editing, duplicate-safe submit, cancellation, password matching, password-reset request, authenticated event.
+- Observable `AuthViewModel`: session check, login/signup mode, field editing, duplicate-safe submit, cancellation, password matching, password-reset request, verification-pending state, resend, and authenticated event.
 - Native login/signup screens with loading, validation, success/error feedback, secure-entry reveal controls, terms acceptance, keyboard/content-type semantics, Dynamic Type, VoiceOver, and no social-login controls.
 - `mainAuth` and `bookingAuth` destinations use one production repository seam and complete through existing Router return behavior.
-- Password reset reports current backend-disabled behavior honestly; no invented recovery success.
+- Signup without a bearer token enters verification-pending state and never stores a session or emits authenticated navigation.
+- Unverified sign-in uses the same pending state, with resend and return-to-sign-in actions.
+- Login and Profile Security password-reset requests use Better Auth’s generic privacy-preserving response.
 
 ## Tests
 

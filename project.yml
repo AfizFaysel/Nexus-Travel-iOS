@@ -16,10 +16,14 @@ targets:
   NexusTravel:
     type: application
     platform: iOS
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Sources/App/NexusTravel.entitlements
     sources:
       - Sources
     resources:
       - path: Sources/Core/DesignSystem/Resources/Icons
+      - path: Sources/Core/DesignSystem/Resources/Images
     dependencies:
       - package: TablerIcons
     info:
@@ -35,6 +39,10 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
   NexusTravelTests:
     type: bundle.unit-test
     platform: iOS
@@ -55,3 +63,18 @@ targets:
       - TestsUI
     dependencies:
       - target: NexusTravel
+schemes:
+  NexusTravel:
+    build:
+      targets:
+        NexusTravel: all
+    test:
+      targets:
+        - NexusTravelTests
+  NexusTravelUI:
+    build:
+      targets:
+        NexusTravel: all
+    test:
+      targets:
+        - NexusTravelUITests

@@ -2,7 +2,15 @@ import SwiftUI
 
 struct AppShell: View {
     @Bindable var router: Router
+    @State private var homeRootScrollTarget: String?
+    @State private var exploreRootScrollTarget: String?
+    @State private var tripsRootScrollTarget: String?
+    @State private var profileRootScrollTarget: String?
+    @State private var freshSearchTask: Task<Void, Never>?
     let homeViewModel: HomeViewModel
+    let exploreViewModel: ExploreViewModel
+    let tripsViewModel: TripsViewModel
+    let flightSearchRepository: any FlightSearchRepository
     let searchResultsRepository: any SearchResultsRepository
     let flightDetailsRepository: any FlightDetailsRepository
     let passengerDetailsRepository: any PassengerDetailsRepository
@@ -20,45 +28,7 @@ struct AppShell: View {
     let bookingFlowState: BookingFlowState
 
     var body: some View {
-        TabView(
-            selection: Binding(
-                get: { router.selectedTab },
-                set: { router.select($0) }
-            )
-        ) {
-            NavigationStack(path: $router.homePath) {
-                HomeRoute(viewModel: homeViewModel, router: router)
-                    .appDestinations(router: router, searchResultsRepository: searchResultsRepository, flightDetailsRepository: flightDetailsRepository, passengerDetailsRepository: passengerDetailsRepository, flightSeatsRepository: flightSeatsRepository, bookingRequestRepository: bookingRequestRepository, paymentProofRepository: paymentProofRepository, tripsRepository: tripsRepository, exploreRepository: exploreRepository, profileRepository: profileRepository, securityRepository: securityRepository, airportRepository: airportRepository, profileViewModel: profileViewModel, preferencesViewModel: preferencesViewModel, authRepository: authRepository, homeViewModel: homeViewModel, bookingFlowState: bookingFlowState)
-            }
-            .tabItem { Label(MainTab.home.label, systemImage: MainTab.home.icon.systemName) }
-            .tag(MainTab.home)
-
-            NavigationStack(path: $router.explorePath) {
-                ExploreScreenRoute(viewModel: ExploreViewModel(repository: exploreRepository), filter: .all, router: router)
-                    .appDestinations(router: router, searchResultsRepository: searchResultsRepository, flightDetailsRepository: flightDetailsRepository, passengerDetailsRepository: passengerDetailsRepository, flightSeatsRepository: flightSeatsRepository, bookingRequestRepository: bookingRequestRepository, paymentProofRepository: paymentProofRepository, tripsRepository: tripsRepository, exploreRepository: exploreRepository, profileRepository: profileRepository, securityRepository: securityRepository, airportRepository: airportRepository, profileViewModel: profileViewModel, preferencesViewModel: preferencesViewModel, authRepository: authRepository, homeViewModel: homeViewModel, bookingFlowState: bookingFlowState)
-            }
-            .tabItem { Label(MainTab.explore.label, systemImage: MainTab.explore.icon.systemName) }
-            .tag(MainTab.explore)
-
-            NavigationStack(path: $router.tripsPath) {
-                TripsScreenRoute(viewModel: TripsViewModel(repository: tripsRepository, authRepository: authRepository), router: router)
-                    .appDestinations(router: router, searchResultsRepository: searchResultsRepository, flightDetailsRepository: flightDetailsRepository, passengerDetailsRepository: passengerDetailsRepository, flightSeatsRepository: flightSeatsRepository, bookingRequestRepository: bookingRequestRepository, paymentProofRepository: paymentProofRepository, tripsRepository: tripsRepository, exploreRepository: exploreRepository, profileRepository: profileRepository, securityRepository: securityRepository, airportRepository: airportRepository, profileViewModel: profileViewModel, preferencesViewModel: preferencesViewModel, authRepository: authRepository, homeViewModel: homeViewModel, bookingFlowState: bookingFlowState)
-            }
-            .tabItem { Label(MainTab.trips.label, systemImage: MainTab.trips.icon.systemName) }
-            .tag(MainTab.trips)
-
-            NavigationStack(path: $router.profilePath) {
-                ProfileScreenRoute(
-                    viewModel: profileViewModel,
-                    router: router,
-                    onSignedOut: bookingFlowState.completeLogout
-                )
-                    .appDestinations(router: router, searchResultsRepository: searchResultsRepository, flightDetailsRepository: flightDetailsRepository, passengerDetailsRepository: passengerDetailsRepository, flightSeatsRepository: flightSeatsRepository, bookingRequestRepository: bookingRequestRepository, paymentProofRepository: paymentProofRepository, tripsRepository: tripsRepository, exploreRepository: exploreRepository, profileRepository: profileRepository, securityRepository: securityRepository, airportRepository: airportRepository, profileViewModel: profileViewModel, preferencesViewModel: preferencesViewModel, authRepository: authRepository, homeViewModel: homeViewModel, bookingFlowState: bookingFlowState)
-            }
-            .tabItem { Label(MainTab.profile.label, systemImage: MainTab.profile.icon.systemName) }
-            .tag(MainTab.profile)
-        }
-        .toolbar(.hidden, for: .tabBar)
+        selectedTabContent
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if router.showsMainBottomBar {
                 MainBottomBar(selected: router.selectedTab, onSelected: router.select)
@@ -72,18 +42,126 @@ struct AppShell: View {
                 set: { if $0 == nil { router.dismissAuthentication() } }
             )
         ) { purpose in
-            NavigationStack {
-                AuthRoute(
-                    viewModel: AuthViewModel(repository: authRepository),
-                    purpose: purpose,
-                    onAuthenticated: {
-                        _ = bookingFlowState.completeAuthentication()
-                        router.dismissAuthentication()
-                    }
-                )
-            }
+            AuthRoute(
+                viewModel: AuthViewModel(repository: authRepository),
+                purpose: purpose,
+                onAuthenticated: {
+                    _ = bookingFlowState.completeAuthentication()
+                    router.dismissAuthentication()
+                }
+            )
             .presentationDragIndicator(.visible)
+            .presentationCornerRadius(NexusRadius.xxxl)
+        }
+        .sheet(
+            item: Binding(
+                get: { router.authLinkPresentation },
+                set: { if $0 == nil, let route = router.authLinkPresentation { router.dismissAuthLink(route) } }
+            )
+        ) { route in
+            AuthLinkScreen(
+                viewModel: AuthViewModel(repository: authRepository),
+                route: route,
+                onPasswordResetComplete: {
+                    bookingFlowState.completeLogout()
+                    profileViewModel.clearForPasswordReset()
+                    tripsViewModel.clearForLogout()
+                    router.tripsPath.removeAll()
+                },
+                onDone: {
+                    router.dismissAuthLink(route)
+                    router.push(.mainAuth(MainAuthRoute()))
+                }
+            )
             .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .onOpenURL(perform: router.handleAuthLink)
+    }
+
+    @ViewBuilder
+    private var selectedTabContent: some View {
+        switch router.selectedTab {
+        case .home: homeStack
+        case .explore: exploreStack
+        case .trips: tripsStack
+        case .profile: profileStack
+        }
+    }
+
+    private var homeStack: some View {
+        navigationStack(path: $router.homePath) {
+            HomeRoute(viewModel: homeViewModel, router: router, rootScrollTarget: $homeRootScrollTarget)
+        }
+    }
+
+    private var exploreStack: some View {
+        navigationStack(path: $router.explorePath) {
+            ExploreScreenRoute(viewModel: exploreViewModel, router: router, rootScrollTarget: $exploreRootScrollTarget)
+        }
+    }
+
+    private var tripsStack: some View {
+        navigationStack(path: $router.tripsPath) {
+            TripsScreenRoute(viewModel: tripsViewModel, router: router, rootScrollTarget: $tripsRootScrollTarget)
+        }
+    }
+
+    private var profileStack: some View {
+        navigationStack(path: $router.profilePath) {
+            ProfileScreenRoute(
+                viewModel: profileViewModel,
+                router: router,
+                rootScrollTarget: $profileRootScrollTarget,
+                onSignedOut: {
+                    bookingFlowState.completeLogout()
+                    bookingFlowState.clear()
+                    tripsViewModel.clearForLogout()
+                    router.tripsPath.removeAll()
+                }
+            )
+        }
+    }
+
+    private func navigationStack<Root: View>(
+        path: Binding<[AppRoute]>,
+        @ViewBuilder root: () -> Root
+    ) -> some View {
+        NavigationStack(path: path) {
+            root().appDestinations(
+                router: router,
+                flightSearchRepository: flightSearchRepository,
+                searchResultsRepository: searchResultsRepository,
+                flightDetailsRepository: flightDetailsRepository,
+                passengerDetailsRepository: passengerDetailsRepository,
+                flightSeatsRepository: flightSeatsRepository,
+                bookingRequestRepository: bookingRequestRepository,
+                paymentProofRepository: paymentProofRepository,
+                tripsRepository: tripsRepository,
+                exploreRepository: exploreRepository,
+                profileRepository: profileRepository,
+                securityRepository: securityRepository,
+                airportRepository: airportRepository,
+                profileViewModel: profileViewModel,
+                preferencesViewModel: preferencesViewModel,
+                authRepository: authRepository,
+                bookingFlowState: bookingFlowState,
+                onSearchAgain: startFreshSearch
+            )
+        }
+    }
+
+    private func startFreshSearch() {
+        guard freshSearchTask == nil else { return }
+        bookingFlowState.clear()
+        router.popToRoot()
+        freshSearchTask = Task { @MainActor in
+            let searchId = await homeViewModel.searchAgain()
+            guard !Task.isCancelled else { freshSearchTask = nil; return }
+            if let searchId {
+                router.push(.searchResults(.init(searchId: searchId)))
+            }
+            freshSearchTask = nil
         }
     }
 }
@@ -118,6 +196,7 @@ private struct MainBottomBar: View {
         )
         .padding(.horizontal, NexusSpacing.space16)
         .padding(.vertical, NexusSpacing.space12)
+        .background(NexusSemanticColors.backgroundPage.ignoresSafeArea(edges: .bottom))
     }
 
     private func item(_ tab: MainTab) -> some View {
@@ -132,6 +211,7 @@ private struct MainBottomBar: View {
                     .nexusTextStyle(
                         NexusText.styles.statusBadge.withFontWeight(isSelected ? .semibold : .medium)
                     )
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }
             .foregroundStyle(isSelected ? NexusSemanticColors.brandPrimary : NexusColors.slate500)
             .frame(maxWidth: .infinity, minHeight: NexusLayout.touchRecommended)
@@ -177,6 +257,7 @@ private struct AppTabRoot: View {
 
 private struct AppDestinations: ViewModifier {
     let router: Router
+    let flightSearchRepository: any FlightSearchRepository
     let searchResultsRepository: any SearchResultsRepository
     let flightDetailsRepository: any FlightDetailsRepository
     let passengerDetailsRepository: any PassengerDetailsRepository
@@ -191,8 +272,8 @@ private struct AppDestinations: ViewModifier {
     let profileViewModel: ProfileViewModel
     let preferencesViewModel: PreferencesViewModel
     let authRepository: any AuthRepository
-    let homeViewModel: HomeViewModel
     let bookingFlowState: BookingFlowState
+    let onSearchAgain: () -> Void
 
     func body(content: Content) -> some View {
         content.navigationDestination(for: AppRoute.self) { route in
@@ -202,7 +283,6 @@ private struct AppDestinations: ViewModifier {
                     viewModel: SearchResultsViewModel(searchId: payload.searchId, repository: searchResultsRepository),
                     router: router
                 )
-                .toolbar(.hidden, for: .tabBar)
             case let .flightDetails(payload):
                 FlightDetailsScreenRoute(
                     viewModel: FlightDetailsViewModel(
@@ -213,7 +293,6 @@ private struct AppDestinations: ViewModifier {
                     bookingFlowState: bookingFlowState,
                     reference: payload.reference
                 )
-                .toolbar(.hidden, for: .tabBar)
             case .mainAuth:
                 AuthRoute(
                     viewModel: AuthViewModel(repository: authRepository),
@@ -238,7 +317,6 @@ private struct AppDestinations: ViewModifier {
                             today: Self.currentLocalDate
                         ), router: router, bookingFlowState: bookingFlowState
                     )
-                    .toolbar(.hidden, for: .tabBar)
                 } else {
                     ContentUnavailableView("Passenger details unavailable", systemImage: NexusPlatformIconName.passengerError.rawValue)
                 }
@@ -250,47 +328,59 @@ private struct AppDestinations: ViewModifier {
                         repository: flightSeatsRepository
                     ), router: router
                 )
-                .toolbar(.hidden, for: .tabBar)
             case let .bookingReview(route):
                 BookingReviewScreenRoute(
                     viewModel: BookingReviewViewModel(reviewId: route.reviewId, repository: bookingRequestRepository),
                     flightDetails: bookingFlowState.passengerDetails,
-                    router: router
+                    router: router,
+                    onSearchAgain: onSearchAgain
                 )
-                .toolbar(.hidden, for: .tabBar)
             case let .paymentProof(route):
                 PaymentProofScreenRoute(
-                    viewModel: PaymentProofViewModel(bookingId: route.bookingId, repository: paymentProofRepository),
+                    viewModel: PaymentProofViewModel(bookingId: route.bookingId, repository: paymentProofRepository,
+                                                     statusCheck: { try await bookingRequestRepository.getStatus(reviewId: $0) }),
                     router: router, bookingId: route.bookingId
                 )
-                .toolbar(.hidden, for: .tabBar)
             case let .tripDetail(route):
                 TripDetailScreenRoute(
                     viewModel: TripDetailViewModel(bookingId: route.tripId, repository: tripsRepository),
                     router: router,
                     onUploadPaymentProof: { router.push(.paymentProof(.init(bookingId: $0))) }
                 )
-                .toolbar(.hidden, for: .tabBar)
             case let .destinationDetail(route):
-                ExploreDetailScreenRoute(viewModel: ExploreDetailViewModel(repository: exploreRepository), mode: .destination(route.destinationId), onSearchFlights: showOnHome)
-                    .toolbar(.hidden, for: .tabBar)
+                ExploreDetailScreenRoute(
+                    viewModel: ExploreDetailViewModel(
+                        repository: exploreRepository,
+                        flightSearchRepository: flightSearchRepository,
+                        today: Self.currentLocalDate
+                    ),
+                    mode: .destination(route.destinationId),
+                    onSearchResults: { router.push(.searchResults(.init(searchId: $0))) }
+                )
             case let .packageDetail(route):
-                ExploreDetailScreenRoute(viewModel: ExploreDetailViewModel(repository: exploreRepository), mode: .package(route.packageId), onSearchFlights: showOnHome)
-                    .toolbar(.hidden, for: .tabBar)
+                ExploreDetailScreenRoute(
+                    viewModel: ExploreDetailViewModel(
+                        repository: exploreRepository,
+                        flightSearchRepository: flightSearchRepository,
+                        today: Self.currentLocalDate
+                    ),
+                    mode: .package(route.packageId),
+                    onSearchResults: { router.push(.searchResults(.init(searchId: $0))) }
+                )
             case .editProfile:
-                EditProfileScreen(viewModel: EditProfileViewModel(repository: profileRepository)).toolbar(.hidden, for: .tabBar)
+                EditProfileScreen(viewModel: EditProfileViewModel(repository: profileRepository))
             case .savedTravelers:
-                SavedTravelersScreen(travelers: profileViewModel.state.travelers).toolbar(.hidden, for: .tabBar)
+                SavedTravelersScreen(travelers: profileViewModel.state.travelers)
             case .settings:
-                SettingsScreen(viewModel: preferencesViewModel, router: router).toolbar(.hidden, for: .tabBar)
+                SettingsScreen(viewModel: preferencesViewModel, router: router)
             case .theme:
-                ThemeScreen(viewModel: preferencesViewModel).toolbar(.hidden, for: .tabBar)
+                ThemeScreen(viewModel: preferencesViewModel)
             case .homeAirport:
-                HomeAirportScreen(viewModel: preferencesViewModel, airports: airportRepository).toolbar(.hidden, for: .tabBar)
+                HomeAirportScreen(viewModel: preferencesViewModel, airports: airportRepository)
             case .notificationSettings:
-                NotificationSettingsScreen(viewModel: preferencesViewModel).toolbar(.hidden, for: .tabBar)
+                NotificationSettingsScreen(viewModel: preferencesViewModel)
             case .security:
-                SecurityScreen(viewModel: AccountSecurityViewModel(repository: securityRepository), router: router).toolbar(.hidden, for: .tabBar)
+                SecurityScreen(viewModel: AccountSecurityViewModel(repository: securityRepository), router: router, authRepository: authRepository)
             case .deleteAccount:
                 DeleteAccountScreen(
                     viewModel: DeleteAccountViewModel(repository: securityRepository, clearSession: { _ = try await authRepository.signOut() }),
@@ -299,16 +389,10 @@ private struct AppDestinations: ViewModifier {
                         router.popToRoot()
                     }
                 )
-                .toolbar(.hidden, for: .tabBar)
             default:
                 AppDestination(route: route)
             }
         }
-    }
-
-    private func showOnHome(_ airportCode: String) {
-        router.select(.home)
-        Task { try? await homeViewModel.prefillDestination(airportCode: airportCode) }
     }
 
     private static func currentLocalDate() -> LocalDate {
@@ -331,7 +415,6 @@ private struct AppDestination: View {
             description: Text("Content is unavailable.")
         )
         .navigationTitle(title)
-        .toolbar(.hidden, for: .tabBar)
     }
 
     private var title: String {
@@ -367,6 +450,7 @@ private struct AppDestination: View {
 private extension View {
     func appDestinations(
         router: Router,
+        flightSearchRepository: any FlightSearchRepository,
         searchResultsRepository: any SearchResultsRepository,
         flightDetailsRepository: any FlightDetailsRepository,
         passengerDetailsRepository: any PassengerDetailsRepository,
@@ -381,11 +465,12 @@ private extension View {
         profileViewModel: ProfileViewModel,
         preferencesViewModel: PreferencesViewModel,
         authRepository: any AuthRepository,
-        homeViewModel: HomeViewModel,
-        bookingFlowState: BookingFlowState
+        bookingFlowState: BookingFlowState,
+        onSearchAgain: @escaping () -> Void
     ) -> some View {
         modifier(AppDestinations(
             router: router,
+            flightSearchRepository: flightSearchRepository,
             searchResultsRepository: searchResultsRepository,
             flightDetailsRepository: flightDetailsRepository,
             passengerDetailsRepository: passengerDetailsRepository,
@@ -400,8 +485,8 @@ private extension View {
             profileViewModel: profileViewModel,
             preferencesViewModel: preferencesViewModel,
             authRepository: authRepository,
-            homeViewModel: homeViewModel,
-            bookingFlowState: bookingFlowState
+            bookingFlowState: bookingFlowState,
+            onSearchAgain: onSearchAgain
         ))
     }
 }
