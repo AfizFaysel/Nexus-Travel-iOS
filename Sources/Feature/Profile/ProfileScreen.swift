@@ -24,7 +24,6 @@ struct ProfileScreenRoute: View {
             onAccountDetails: { router.push(.editProfile(.init())) },
             onSavedTravelers: { router.push(.savedTravelers(.init())) },
             onRetry: retry,
-            onRefresh: { try? await viewModel.load() },
             onSignOut: viewModel.requestLogout
         )
         .task(id: loadRequest) {
@@ -97,7 +96,6 @@ private struct ProfileScreen: View {
     let onAccountDetails: () -> Void
     let onSavedTravelers: () -> Void
     let onRetry: () -> Void
-    let onRefresh: () async -> Void
     let onSignOut: () -> Void
 
     @Environment(\.openURL) private var openURL
@@ -147,7 +145,7 @@ private struct ProfileScreen: View {
                 .padding(.bottom, spacing?.sectionGap ?? NexusSpacing.space32)
             }
             .scrollBounceBehavior(.always, axes: .vertical)
-            .refreshable { await onRefresh() }
+            .refreshable { onRetry() }
             .scrollPosition(id: $rootScrollTarget, anchor: .top)
             .accessibilityIdentifier("root-profile")
             .sheet(isPresented: $showsSupport) {
