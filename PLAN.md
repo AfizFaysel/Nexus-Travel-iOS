@@ -7,7 +7,7 @@ Single source for roadmap, phases, milestones, dependencies, and live task statu
 - `[ ]` queued
 - `[ ] 🔄` active
 - `[ ] ⛔` blocked
-- `[x]` merged and verified by latest PR-head SHA CI
+- `[x]` merged and verified for the current PR head
 
 Only coordinator edits this file. Feature agents follow assigned `docs/tasks/<ID>-*.md` packets and never change task status themselves.
 
@@ -111,4 +111,4 @@ Exit gate: current Apple-policy audit, exact Release archive validation, privacy
 - Target 0.5–2 agent-hours, normally no more than 8 production and 8 test files.
 - Parallel tasks must have merged dependencies and non-overlapping owned paths.
 - Coordinator marks `🔄` before dispatch, creates complete packet, then assigns agent.
-- Coordinator marks `[x]` and appends `ARCHIVE.md` only after merge and latest PR-head SHA CI success.
+- The coordinator marks `[x]` and appends `ARCHIVE.md` after merge and task verification.

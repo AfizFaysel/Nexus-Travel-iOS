@@ -9,7 +9,7 @@ Observable behavior delivered.
 ## Evidence
 
 - RED: expected failing test/check + link
-- GREEN: focused/full test + latest CI link
+- GREEN: focused or full test results for the current PR head
 - Parity review: Android/backend/mockup mismatches found and disposition
 
 ## Risk
@@ -20,6 +20,6 @@ Cancellation, offline, security/privacy, accessibility, migration risk.
 
 - [ ] Scope/non-scope respected
 - [ ] Required skills loaded
-- [ ] CI green on latest SHA
+- [ ] Verification results and gaps recorded
 - [ ] PARITY and PROGRESS updated
 - [ ] No skipped/weakened test
