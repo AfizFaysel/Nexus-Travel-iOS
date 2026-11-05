@@ -375,6 +375,36 @@ final class BookingJourneyUITests: XCTestCase {
     }
 
     @MainActor
+    func testGuestCanChangeAndRetainAppearance() {
+        let app = XCUIApplication()
+        app.launchArguments.append("--reset-auth-session")
+        app.launch()
+
+        let profile = app.buttons["main-tab-profile"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 15))
+        profile.tap()
+
+        let dark = app.buttons["Dark appearance"]
+        guard dark.waitForExistence(timeout: 5) else {
+            XCTFail("The Profile root should offer Dark appearance to guests.")
+            return
+        }
+        let system = app.buttons["System appearance"]
+        defer {
+            if system.isHittable { system.tap() }
+        }
+        dark.tap()
+        XCTAssertTrue(dark.isSelected)
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(profile.waitForExistence(timeout: 15))
+        profile.tap()
+        XCTAssertTrue(dark.waitForExistence(timeout: 5))
+        XCTAssertTrue(dark.isSelected)
+    }
+
+    @MainActor
     func testGuestTabsExposeSignInActions() {
         let app = XCUIApplication()
         app.launchArguments.append("--reset-auth-session")
