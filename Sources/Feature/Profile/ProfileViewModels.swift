@@ -1,48 +1,91 @@
 import Observation
 import Foundation
 
-enum ProfileAccessState: Equatable, Sendable { case guest, loading, authenticated(CustomerProfile), recoverableError(CustomerProfile?) }
-struct ProfileUiState: Equatable, Sendable { var access: ProfileAccessState = .loading; var travelers: [SavedTraveler] = []; var refreshing = false; var signingOut = false; var showLogoutConfirmation = false; var errorMessage: String? }
+enum ProfileAccessState: Equatable, Sendable {
+    case guest
+    case loading
+    case authenticated(CustomerProfile)
+    case recoverableError(CustomerProfile?)
+}
+
+struct ProfileUiState: Equatable, Sendable {
+    var access: ProfileAccessState = .loading
+    var travelers: [SavedTraveler] = []
+    var refreshing = false
+    var signingOut = false
+    var showLogoutConfirmation = false
+    var errorMessage: String?
+
+    var profile: CustomerProfile? {
+        switch access {
+        case let .authenticated(profile): profile
+        case let .recoverableError(profile): profile
+        case .guest, .loading: nil
+        }
+    }
+
+    var isRecoverableError: Bool {
+        if case .recoverableError = access { return true }
+        return false
+    }
+}
+
 @MainActor @Observable final class ProfileViewModel {
     private(set) var state = ProfileUiState()
     private let repository: any ProfileRepository
     private let authRepository: any AuthRepository
     private var loadGeneration = 0
     private var hasLoaded = false
+    private var accountID: String?
 
     init(repository: any ProfileRepository, authRepository: any AuthRepository) { self.repository = repository; self.authRepository = authRepository }
 
     func loadIfNeeded() async throws {
         guard !hasLoaded else { return }
         try await load()
-        hasLoaded = true
     }
 
+    func invalidateLoadedProfile() { hasLoaded = false }
+
     func load() async throws {
+        guard !state.signingOut else { return }
         loadGeneration += 1
         let request = loadGeneration
-        let cached = cachedProfile
-        let prior = state
-        state.access = cached == nil ? .loading : state.access
-        state.refreshing = cached != nil
+        var prior = state
+        prior.refreshing = false
+        var cached: CustomerProfile?
 
         do {
-            guard try await authRepository.getLocalSession() != nil else {
-                guard request == loadGeneration else { return }
+            let session = try await authRepository.getLocalSession()
+            try Task.checkCancellation()
+            guard request == loadGeneration else { return }
+            if accountID != session?.user.id {
+                accountID = session?.user.id
+                prior = ProfileUiState()
+                state = prior
+            }
+            guard session != nil else {
                 state = ProfileUiState(access: .guest)
+                hasLoaded = true
                 return
             }
+
+            cached = state.profile
+            state.access = cached == nil ? .loading : state.access
+            state.refreshing = cached != nil
 
             async let profileResult = repository.profile()
             async let travelersResult = repository.travelers()
             let (profile, travelers) = try await (profileResult, travelersResult)
+            try Task.checkCancellation()
             guard request == loadGeneration else { return }
 
             if case let .success(value) = profile {
                 state = ProfileUiState(access: .authenticated(value), travelers: travelers.value ?? [])
             } else {
-                state = ProfileUiState(access: .recoverableError(cached))
+                state = ProfileUiState(access: .recoverableError(cached), travelers: prior.travelers)
             }
+            hasLoaded = true
         } catch is CancellationError {
             if request == loadGeneration { state = prior }
             throw CancellationError()
@@ -52,12 +95,21 @@ struct ProfileUiState: Equatable, Sendable { var access: ProfileAccessState = .l
                 state = prior
                 throw CancellationError()
             }
-            state = ProfileUiState(access: .recoverableError(cached))
+            state = ProfileUiState(access: .recoverableError(cached), travelers: cached == nil ? [] : prior.travelers)
+            hasLoaded = true
         }
     }
 
-    func requestLogout() { state.showLogoutConfirmation = true }; func dismissLogout() { state.showLogoutConfirmation = false }
-    func clearForPasswordReset() { state = ProfileUiState(access: .guest); hasLoaded = false }
+    func requestLogout() { state.showLogoutConfirmation = true }
+    func dismissLogout() { state.showLogoutConfirmation = false }
+
+    func clearForPasswordReset() {
+        loadGeneration += 1
+        accountID = nil
+        state = ProfileUiState(access: .guest)
+        hasLoaded = false
+    }
+
     func signOut() async throws {
         guard !state.signingOut else { return }
         loadGeneration += 1
@@ -66,27 +118,21 @@ struct ProfileUiState: Equatable, Sendable { var access: ProfileAccessState = .l
         state.showLogoutConfirmation = false
         do {
             _ = try await authRepository.signOut()
-            state = ProfileUiState(access: .guest)
-            hasLoaded = false
+            clearForPasswordReset()
         } catch is CancellationError {
             state = prior
+            hasLoaded = false
             throw CancellationError()
         } catch {
             state = ProfileUiState(
-                access: .recoverableError(cachedProfile),
+                access: .recoverableError(prior.profile),
+                travelers: prior.travelers,
                 errorMessage: "We couldn’t securely sign you out. Try again."
             )
             throw error
         }
     }
 
-    private var cachedProfile: CustomerProfile? {
-        switch state.access {
-        case let .authenticated(profile): profile
-        case let .recoverableError(profile): profile
-        case .guest, .loading: nil
-        }
-    }
 }
 private extension ProfileResult { var value: Value? { if case let .success(value) = self { value } else { nil } } }
 
@@ -101,10 +147,41 @@ struct EditProfileState: Equatable, Sendable { var name = ""; var email = ""; va
 
 struct PreferencesState: Equatable, Sendable { var value = CustomerPreferences(); var refreshing = true; var saving = false; var error: String? }
 @MainActor @Observable final class PreferencesViewModel {
-    private(set) var state = PreferencesState(); private let repository: any PreferencesRepository; private let onTheme: (ThemePreference) -> Void
-    init(repository: any PreferencesRepository, onTheme: @escaping (ThemePreference) -> Void) { self.repository = repository; self.onTheme = onTheme }
-    func load() async throws { state.value = await repository.local(); onTheme(state.value.theme); switch try await repository.refresh() { case let .success(value): state = .init(value: value, refreshing: false); onTheme(value.theme); default: state.refreshing = false; state.error = "Using saved preferences." } }
-    func save(_ value: CustomerPreferences) async throws { guard !state.saving else { return }; let prior = state.value; state.value = value; state.saving = true; state.error = nil; onTheme(value.theme); do { guard case let .success(saved) = try await repository.save(value) else { state.saving = false; state.error = "Could not sync preferences."; return }; state = .init(value: saved, refreshing: false); onTheme(saved.theme) } catch is CancellationError { state.value = prior; state.saving = false; onTheme(prior.theme); throw CancellationError() } }
+    private(set) var state = PreferencesState()
+    private let repository: any PreferencesRepository
+
+    init(repository: any PreferencesRepository) { self.repository = repository }
+
+    func load() async throws {
+        state.value = await repository.local()
+        switch try await repository.refresh() {
+        case let .success(value):
+            state = .init(value: value, refreshing: false)
+        default:
+            state.refreshing = false
+            state.error = "Using saved preferences."
+        }
+    }
+
+    func save(_ value: CustomerPreferences) async throws {
+        guard !state.saving else { return }
+        let prior = state.value
+        state.value = value
+        state.saving = true
+        state.error = nil
+        do {
+            guard case let .success(saved) = try await repository.save(value) else {
+                state.saving = false
+                state.error = "Could not sync preferences."
+                return
+            }
+            state = .init(value: saved, refreshing: false)
+        } catch is CancellationError {
+            state.value = prior
+            state.saving = false
+            throw CancellationError()
+        }
+    }
 }
 
 struct SecurityState: Equatable, Sendable { var value: AccountSecurity?; var loading = true; var error: String? }
@@ -160,9 +237,4 @@ enum DeleteAccountState: Equatable, Sendable {
             state = .failure("Deletion could not be started. Try again later or contact Nexus support.")
         }
     }
-}
-
-@MainActor @Observable final class AppTheme {
-    var preference: ThemePreference
-    init(preference: ThemePreference = .system) { self.preference = preference }
 }

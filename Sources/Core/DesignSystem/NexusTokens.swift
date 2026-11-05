@@ -25,6 +25,11 @@ enum NexusSpacingMode: Equatable {
     case spacious
 }
 
+enum NexusOpacity {
+    static let darkScrim = 0.65
+    static let mainBottomBarBorder = 0.2
+}
+
 /// Android-mirrored spacing selected from valid screen geometry.
 struct NexusAdaptiveSpacing: Equatable {
     let mode: NexusSpacingMode
@@ -233,12 +238,12 @@ enum NexusSearchResultLayout {
 
 /// iOS shadow values approximating Android surface elevation.
 enum NexusElevation {
-    static let mainBottomBarAmbientOpacity: Double = 0.08
-    static let mainBottomBarAmbientRadius: CGFloat = 12
-    static let mainBottomBarAmbientY: CGFloat = 2
-    static let mainBottomBarContactOpacity: Double = 0.06
-    static let mainBottomBarContactRadius: CGFloat = 3
-    static let mainBottomBarContactY: CGFloat = 1
+    static let mainBottomBarAmbientOpacity: Double = 0.035
+    static let mainBottomBarAmbientRadius: CGFloat = 6
+    static let mainBottomBarAmbientY: CGFloat = 1
+    static let mainBottomBarDirectionalOpacity: Double = 0.23
+    static let mainBottomBarDirectionalRadius: CGFloat = 12
+    static let mainBottomBarDirectionalY: CGFloat = 15
 }
 
 /// Android-mirrored border tokens in points.

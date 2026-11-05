@@ -11,6 +11,7 @@ struct NexusApp: App {
     private let dependencies: AppDependencies?
     @State private var router: Router
     @State private var bookingFlowState: BookingFlowState
+    @State private var appTheme: AppTheme
 
     init() {
         let arguments = ProcessInfo.processInfo.arguments
@@ -25,12 +26,16 @@ struct NexusApp: App {
         let isPreview = false
         #endif
         dependencies = launchDestination.gallerySection == nil && !isPreview
-            ? AppDependencies(sessionStore: arguments.contains("--reset-auth-session")
-                ? VolatileAuthSessionStore()
-                : KeychainAuthSessionStore())
+            ? AppDependencies(
+                sessionStore: arguments.contains("--reset-auth-session")
+                    ? VolatileAuthSessionStore()
+                    : KeychainAuthSessionStore(),
+                origin: AppConfiguration.origin
+            )
             : nil
         _router = State(initialValue: Router())
         _bookingFlowState = State(initialValue: BookingFlowState())
+        _appTheme = State(initialValue: AppTheme())
     }
 
     var body: some Scene {
@@ -71,8 +76,12 @@ struct NexusApp: App {
                          airportRepository: dependencies.airportRepository,
                          profileViewModel: dependencies.profileViewModel,
                          preferencesViewModel: dependencies.preferencesViewModel,
+                         supportRepository: dependencies.supportRepository,
+                         appearance: appTheme.preference,
+                         onAppearanceChange: { appTheme.select($0) },
                          authRepository: dependencies.authRepository,
                          bookingFlowState: bookingFlowState)
-            .preferredColorScheme(dependencies.appTheme.preference == .system ? nil : dependencies.appTheme.preference == .dark ? .dark : .light)
+            .preferredColorScheme(appTheme.colorScheme)
+            .environment(appTheme)
     }
 }

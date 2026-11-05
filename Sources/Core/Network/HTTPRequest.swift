@@ -46,9 +46,10 @@ struct HTTPRequest: Equatable, Sendable {
     }
 
     /// Builds native request while protecting authorization headers.
-    func urlRequest() throws -> URLRequest {
+    func urlRequest(origin: URL = AppConfiguration.productionOrigin) throws -> URLRequest {
         guard timeout > 0 else { throw HTTPTransportError.invalidRequest }
-        var request = URLRequest(url: try AppConfiguration.url(for: target, queryItems: queryItems), timeoutInterval: timeout)
+        let url = try AppConfiguration.url(for: target, queryItems: queryItems, origin: origin)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpShouldHandleCookies = false
         request.httpMethod = method.rawValue
         request.httpBody = body

@@ -1,4 +1,8 @@
 name: NexusTravel
+configs:
+  Debug: debug
+  Release: release
+  VisualEvidence: debug
 options:
   bundleIdPrefix: com.nexustravel
   deploymentTarget:
@@ -19,6 +23,10 @@ targets:
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: Sources/App/NexusTravel.entitlements
+      configs:
+        VisualEvidence:
+          PRODUCT_BUNDLE_IDENTIFIER: com.nexustravel.NexusTravel.VisualEvidence
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NEXUS_VISUAL_EVIDENCE"
     sources:
       - Sources
     resources:

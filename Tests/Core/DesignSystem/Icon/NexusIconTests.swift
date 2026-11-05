@@ -4,21 +4,19 @@ import Testing
 
 @Suite("Nexus icon catalog")
 struct NexusIconTests {
-    @Test("Catalog mirrors all Android icon names")
+    @Test("Catalog retains the ported Android icon names")
     func catalogMirrorsAndroidNames() {
         let expectedNames = [
-            "home", "search", "trips", "profile", "more", "back", "close",
+            "home", "search", "trips", "profile", "users", "device", "sun", "moon", "more", "back", "close",
             "chevronDown", "chevronRight", "share", "download", "wallet", "calendar",
             "filter", "sort", "flight", "flightDeparture", "flightArrival", "hotel", "car",
             "map", "location", "seat", "seatAlt", "seatSide", "armchair", "baggage",
             "boardingPass", "ticket", "qr", "gate", "payment", "shield", "headset", "chat",
-            "phone", "email", "help", "check", "info", "warning", "error", "clock",
+            "phone", "whatsApp", "email", "help", "check", "info", "warning", "error", "clock",
             "offline", "loading", "bell", "tag", "refund", "continue", "arrowsExchange"
         ]
 
-        #expect(NexusIconName.allCases.count == 50)
         #expect(NexusIconName.allCases.map(\.rawValue) == expectedNames)
-        #expect(Set(NexusIconName.allCases.map(\.rawValue)).count == 50)
     }
 
     @Test("Travel objects use approved Tabler icons")
@@ -53,8 +51,8 @@ struct NexusIconTests {
     func platformActionsRemainNative() {
         let nativeNames: [NexusIconName] = [
             .search, .more, .back, .close,
-            .chevronDown, .chevronRight, .share, .download, .filter, .sort,
-            .shield, .chat, .phone, .email, .help, .check, .info, .warning,
+            .chevronDown, .share, .download, .filter, .sort,
+            .shield, .chat, .help, .check, .info, .warning,
             .error, .clock, .offline, .loading, .bell
         ]
 

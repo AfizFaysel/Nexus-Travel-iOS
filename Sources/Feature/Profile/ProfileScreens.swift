@@ -1,169 +1,25 @@
 import SwiftUI
 import UserNotifications
 
-struct ProfileScreenRoute: View {
-    @State private var viewModel: ProfileViewModel
-    @Binding var rootScrollTarget: String?
-    let router: Router
-    let onSignedOut: () -> Void
-
-    init(
-        viewModel: ProfileViewModel,
-        router: Router,
-        rootScrollTarget: Binding<String?>,
-        onSignedOut: @escaping () -> Void
-    ) {
-        _viewModel = State(initialValue: viewModel)
-        _rootScrollTarget = rootScrollTarget
-        self.router = router
-        self.onSignedOut = onSignedOut
-    }
-
-    var body: some View {
-        ProfileScreen(
-            state: viewModel.state,
-            router: router,
-            rootScrollTarget: $rootScrollTarget,
-            onLogout: viewModel.requestLogout,
-            onSignIn: { router.presentAuthentication(for: .profile) },
-            onRetry: { Task { try? await viewModel.load() } }
-        )
-        .task { try? await viewModel.loadIfNeeded() }
-        .refreshable { try? await viewModel.load() }
-        .onChange(of: router.authPresentation) { previous, current in
-            guard previous == .profile, current == nil else { return }
-            Task { try? await viewModel.load() }
-        }
-        .confirmationDialog(
-            "Log out?",
-            isPresented: Binding(
-                get: { viewModel.state.showLogoutConfirmation },
-                set: { if !$0 { viewModel.dismissLogout() } }
-            )
-        ) {
-            Button("Log out", role: .destructive) {
-                Task {
-                    do {
-                        try await viewModel.signOut()
-                        onSignedOut()
-                    } catch {}
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("You will need to sign in again to access trips and saved details.")
-        }
-    }
-}
-private struct ProfileScreen: View {
-    let state: ProfileUiState
-    let router: Router
-    @Binding var rootScrollTarget: String?
-    let onLogout: () -> Void
-    let onSignIn: () -> Void
-    let onRetry: () -> Void
-    var body: some View {
-        List {
-            Text("Profile")
-                .nexusTextStyle(NexusText.styles.screenTitle)
-                .accessibilityAddTraits(.isHeader)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 0, leading: NexusSpacing.space4, bottom: 0, trailing: NexusSpacing.space4))
-                .id("profile.heading")
-            content
-        }
-        .listStyle(.insetGrouped)
-        .scrollTargetLayout()
-        .scrollPosition(id: $rootScrollTarget, anchor: .top)
-        .accessibilityIdentifier("root-profile")
-        .navigationBarHidden(true)
-    }
-    @ViewBuilder private var content: some View {
-        switch state.access {
-        case .loading: ProgressView().accessibilityLabel("Loading profile").id("profile.loading")
-        case .guest:
-            guestProfile
-                .id("profile.account")
-            Section("Preferences") {
-                row("Settings", icon: { NexusPlatformIcon(.settings) }) {
-                    router.push(.settings(.init()))
-                }
-            }
-            .id("profile.preferences")
-        case let .recoverableError(profile):
-            if let profile { header(profile) }
-            NexusBanner(text: state.errorMessage ?? "Profile could not refresh.", status: .error, trailingAction: {
-                NexusTextButton("Try again", action: onRetry)
-            })
-            .id("profile.error")
-            Button(role: .destructive, action: onLogout) {
-                if state.signingOut { HStack { ProgressView(); Text("Signing out…") } }
-                else { Text("Log out") }
-            }
-            .disabled(state.signingOut)
-        case let .authenticated(profile):
-            header(profile)
-            Section("Account") {
-                row("Saved travelers", icon: { NexusPlatformIcon(.savedTravelers) }) {
-                    router.push(.savedTravelers(.init()))
-                }
-                LabeledContent("Payment methods", value: "Coming later")
-            }
-            .id("profile.account")
-            Section("Preferences") {
-                row("Settings", icon: { NexusPlatformIcon(.settings) }) { router.push(.settings(.init())) }
-                row("Notifications", icon: { NexusIcon(name: .bell) }) { router.push(.notificationSettings(.init())) }
-                row("Security", icon: { NexusPlatformIcon(.password) }) { router.push(.security(.init())) }
-            }
-            .id("profile.preferences")
-            Section {
-                Button(role: .destructive, action: onLogout) {
-                    if state.signingOut { HStack { ProgressView(); Text("Signing out…") } }
-                    else { Text("Log out") }
-                }
-                .disabled(state.signingOut)
-            }
-            .id("profile.logout")
-        }
-    }
-    private func header(_ profile: CustomerProfile) -> some View {
-        Section {
-            ViewThatFits(in: .horizontal) {
-                HStack { avatar(profile); profileDetails(profile) }
-                VStack(alignment: .leading) { avatar(profile); profileDetails(profile) }
-            }
-        }
-        .id("profile.account-summary")
-    }
-    private var guestProfile: some View {
-        HStack(spacing: NexusSpacing.space16) {
-            NexusIcon(name: .profile, size: NexusIconSize.lg)
-                .foregroundStyle(NexusSemanticColors.textHeading)
-                .frame(width: NexusSpacing.space64, height: NexusSpacing.space64)
-                .background(NexusSemanticColors.surfaceSubtle, in: Circle())
-            VStack(alignment: .leading, spacing: NexusSpacing.space4) {
-                Text("Guest")
-                    .nexusTextStyle(NexusText.styles.sectionTitleSmall)
-                    .foregroundStyle(NexusSemanticColors.textHeading)
-                Text("Sign in to access bookings")
-                    .nexusTextStyle(NexusText.styles.bodySmall)
-                    .foregroundStyle(NexusSemanticColors.textSecondary)
-            }
-            Spacer(minLength: NexusSpacing.space4)
-            NexusTextButton("Sign in", action: onSignIn)
-        }
-        .padding(.vertical, NexusSpacing.space8)
-    }
-    private func avatar(_ profile: CustomerProfile) -> some View { Text(initials(profile.name)).font(.title.bold()).frame(width: 72, height: 72).foregroundStyle(.white).background(NexusSemanticColors.brandPrimary, in: Circle()).accessibilityHidden(true) }
-    private func profileDetails(_ profile: CustomerProfile) -> some View { VStack(alignment: .leading) { Text(profile.name).nexusTextStyle(NexusText.styles.sectionTitle).accessibilityAddTraits(.isHeader); Text(profile.email).nexusTextStyle(NexusText.styles.bodySmall); Text("\(profile.verifiedTravelerCount) verified travelers").nexusTextStyle(NexusText.styles.caption); Button("Edit profile") { router.push(.editProfile(.init())) } } }
-    private func row<Icon: View>(_ title: String, @ViewBuilder icon: () -> Icon, action: @escaping () -> Void) -> some View { Button(action: action) { Label { Text(title) } icon: { icon() } } }
-}
-
 struct EditProfileScreen: View {
     @State private var viewModel: EditProfileViewModel
     init(viewModel: EditProfileViewModel) { _viewModel = State(initialValue: viewModel) }
-    var body: some View { Form { TextField("Full name", text: Binding(get: { viewModel.state.name }, set: { name in viewModel.name(name) })); TextField("Email", text: .constant(viewModel.state.email)).disabled(true); TextField("Phone", text: Binding(get: { viewModel.state.phone }, set: { phone in viewModel.phone(phone) })).keyboardType(.phonePad); if let error = viewModel.state.error { Text(error).foregroundStyle(NexusSemanticColors.errorText) }; Button(viewModel.state.saved ? "Saved" : "Save changes") { Task { try? await viewModel.save() } }.disabled(viewModel.state.loading || viewModel.state.saving) }.navigationTitle("Edit profile").task { try? await viewModel.load() } }
+    var body: some View {
+        Form {
+            TextField("Full name", text: Binding(get: { viewModel.state.name }, set: { viewModel.name($0) }))
+            TextField("Email", text: .constant(viewModel.state.email)).disabled(true)
+            TextField("Phone", text: Binding(get: { viewModel.state.phone }, set: { viewModel.phone($0) }))
+                .keyboardType(.phonePad)
+            if let error = viewModel.state.error {
+                Text(error).foregroundStyle(NexusSemanticColors.errorText)
+            }
+            Button(viewModel.state.saved ? "Saved" : "Save changes") { Task { try? await viewModel.save() } }
+                .disabled(viewModel.state.loading || viewModel.state.saving)
+            NavigationLink("Security", value: AppRoute.security(.init()))
+        }
+        .navigationTitle("Account details")
+        .task { try? await viewModel.load() }
+    }
 }
 
 struct SavedTravelersScreen: View { let travelers: [SavedTraveler]; var body: some View { List { if travelers.isEmpty { ContentUnavailableView("No saved travelers yet.", systemImage: NexusPlatformIconName.savedTravelers.rawValue) } else { ForEach(travelers, id: \.id) { traveler in VStack(alignment: .leading) { Text("\(traveler.firstName) \(traveler.lastName)"); Text("\(traveler.nationality) · \(traveler.passportNumber)").font(.subheadline).foregroundStyle(.secondary); Text(humanizeProfile(traveler.status)).font(.caption).foregroundStyle(NexusSemanticColors.brandPrimary) } } } }.navigationTitle("Saved travelers") } }
@@ -172,7 +28,20 @@ struct SettingsScreen: View {
     let viewModel: PreferencesViewModel; let router: Router
     var body: some View { Form { Section("Preferences") { LabeledContent("Language", value: "English"); LabeledContent("Currency", value: "INR"); NavigationLink("Theme", value: AppRoute.theme(.init())); NavigationLink("Home airport", value: AppRoute.homeAirport(.init())) }; Section("Notifications") { NavigationLink("Notification preferences", value: AppRoute.notificationSettings(.init())) }; if let error = viewModel.state.error { Text(error).foregroundStyle(.secondary) } }.navigationTitle("Settings").task { try? await viewModel.load() } }
 }
-struct ThemeScreen: View { let viewModel: PreferencesViewModel; var body: some View { Form { Picker("Theme", selection: Binding(get: { viewModel.state.value.theme }, set: { theme in saveTheme(theme) })) { ForEach(ThemePreference.allCases, id: \.self) { Text(humanizeProfile($0.rawValue)).tag($0) } } }.navigationTitle("Theme") }; private func saveTheme(_ theme: ThemePreference) { var next = viewModel.state.value; next.theme = theme; Task { try? await viewModel.save(next) } } }
+struct ThemeScreen: View {
+    @Environment(AppTheme.self) private var appTheme
+
+    var body: some View {
+        Form {
+            Picker("Theme", selection: Binding(get: { appTheme.preference }, set: { appTheme.select($0) })) {
+                ForEach(ThemePreference.allCases, id: \.self) { preference in
+                    Text(humanizeProfile(preference.rawValue)).tag(preference)
+                }
+            }
+        }
+        .navigationTitle("Theme")
+    }
+}
 struct NotificationSettingsScreen: View {
     let viewModel: PreferencesViewModel
     var body: some View { Form { Text("Choose which updates Nexus may send when notification delivery becomes available."); notificationToggle("Push notifications", .push); notificationToggle("Flight updates", .flight); notificationToggle("Gate changes", .gate); notificationToggle("Check-in reminders", .checkIn); notificationToggle("Payment alerts", .payment); notificationToggle("Promotional offers", .promotional) }.navigationTitle("Notifications") }

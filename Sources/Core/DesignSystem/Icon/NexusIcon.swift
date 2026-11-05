@@ -6,12 +6,21 @@ enum NexusIconSource: Equatable {
     case system(String)
     case tabler(NexusTablerIconName)
     case custom(String)
+    case originalAsset(String)
 }
 
 /// Tabler names approved for Nexus travel objects.
 enum NexusTablerIconName: Equatable {
     case home
     case user
+    case users
+    case deviceMobile
+    case sun
+    case moon
+    case chevronRight
+    case headset
+    case phone
+    case mail
     case wallet
     case calendar
     case plane
@@ -75,7 +84,7 @@ struct NexusPlatformIcon: View {
         case let .system(systemName):
             Image(systemName: systemName)
                 .accessibilityHidden(true)
-        case let .custom(assetName):
+        case let .custom(assetName), let .originalAsset(assetName):
             Image(assetName)
             .accessibilityHidden(true)
         }
@@ -88,6 +97,10 @@ enum NexusIconName: String, CaseIterable, Equatable, Hashable {
     case search
     case trips
     case profile
+    case users
+    case device
+    case sun
+    case moon
     case more
     case back
     case close
@@ -120,6 +133,7 @@ enum NexusIconName: String, CaseIterable, Equatable, Hashable {
     case headset
     case chat
     case phone
+    case whatsApp
     case email
     case help
     case check
@@ -141,6 +155,15 @@ enum NexusIconName: String, CaseIterable, Equatable, Hashable {
         case .home: .tabler(.home)
         case .trips: .tabler(.ticket)
         case .profile: .tabler(.user)
+        case .users: .tabler(.users)
+        case .device: .tabler(.deviceMobile)
+        case .sun: .tabler(.sun)
+        case .moon: .tabler(.moon)
+        case .chevronRight: .tabler(.chevronRight)
+        case .headset: .tabler(.headset)
+        case .phone: .tabler(.phone)
+        case .email: .tabler(.mail)
+        case .whatsApp: .originalAsset("whatsapp-brand")
         case .wallet: .tabler(.wallet)
         case .calendar: .tabler(.calendar)
         case .flight: .tabler(.plane)
@@ -169,6 +192,10 @@ enum NexusIconName: String, CaseIterable, Equatable, Hashable {
         case .search: "magnifyingglass"
         case .trips: "ticket"
         case .profile: "person"
+        case .users: "person.2"
+        case .device: "iphone"
+        case .sun: "sun.max"
+        case .moon: "moon"
         case .more: "ellipsis"
         case .back: "chevron.left"
         case .close: "xmark"
@@ -201,6 +228,7 @@ enum NexusIconName: String, CaseIterable, Equatable, Hashable {
         case .headset: "headphones"
         case .chat: "message"
         case .phone: "phone"
+        case .whatsApp: "message"
         case .email: "envelope"
         case .help: "questionmark.circle"
         case .check: "checkmark"
@@ -272,6 +300,12 @@ struct NexusIcon: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
+        case let .originalAsset(assetName):
+            Image(assetName)
+                .renderingMode(.original)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
         }
     }
 }
@@ -281,6 +315,14 @@ private extension NexusTablerIconName {
         switch self {
         case .home: TablerIcons.homeOutlined
         case .user: TablerIcons.userOutlined
+        case .users: TablerIcons.usersOutlined
+        case .deviceMobile: TablerIcons.deviceMobileOutlined
+        case .sun: TablerIcons.sunOutlined
+        case .moon: TablerIcons.moonOutlined
+        case .chevronRight: TablerIcons.chevronRightOutlined
+        case .headset: TablerIcons.headsetOutlined
+        case .phone: TablerIcons.phoneOutlined
+        case .mail: TablerIcons.mailOutlined
         case .wallet: TablerIcons.walletOutlined
         case .calendar: TablerIcons.calendarOutlined
         case .plane: TablerIcons.planeOutlined

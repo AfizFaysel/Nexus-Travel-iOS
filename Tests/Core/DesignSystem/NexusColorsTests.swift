@@ -167,7 +167,8 @@ private func rgbaComponents(of color: Color) throws -> RGBAComponents {
     var green: CGFloat = 0
     var blue: CGFloat = 0
     var alpha: CGFloat = 0
-    let isRGB = UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+    let resolved = UIColor(color).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+    let isRGB = resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
     try #require(isRGB)
     return RGBAComponents(red: red, green: green, blue: blue, alpha: alpha)
 }

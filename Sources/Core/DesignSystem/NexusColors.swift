@@ -1,7 +1,27 @@
 import SwiftUI
+import UIKit
 
 /// Android-mirrored primitive and compatibility color tokens.
 enum NexusColors {
+    static let charcoalPage = Color(argb: 0xFF090B0E)
+    static let charcoalSurface = Color(argb: 0xFF171A1F)
+    static let charcoalMuted = Color(argb: 0xFF242830)
+    static let charcoalText = Color(argb: 0xFFEDF0F4)
+    static let charcoalSecondary = Color(argb: 0xFFB8BEC9)
+    static let charcoalOutline = Color(argb: 0xFF79828F)
+    static let charcoalDivider = Color(argb: 0xFF3C424C)
+    static let charcoalAction = Color(argb: 0xFFA5C8FF)
+    static let charcoalPressed = Color(argb: 0xFF8AB7FA)
+    static let charcoalAccentSurface = Color(argb: 0xFF20314A)
+    static let charcoalSuccessBg = Color(argb: 0xFF142D23)
+    static let charcoalSuccessText = Color(argb: 0xFF8BD9AD)
+    static let charcoalWarningBg = Color(argb: 0xFF352A16)
+    static let charcoalWarningText = Color(argb: 0xFFF1CB83)
+    static let charcoalErrorBg = Color(argb: 0xFF3B2024)
+    static let charcoalErrorText = Color(argb: 0xFFFFB4AB)
+    static let black = Color(argb: 0xFF000000)
+    static let charcoalScrim = black.opacity(NexusOpacity.darkScrim)
+
     static let blue50 = Color(argb: 0xFFEAF2FF)
     static let blue100 = Color(argb: 0xFFD8E7FF)
     static let blue500 = Color(argb: 0xFF0B63F6)
@@ -71,45 +91,58 @@ enum NexusColors {
 
 /// Android-mirrored semantic color roles.
 enum NexusSemanticColors {
-    static let brandPrimary = NexusColors.blue500
-    static let brandPressed = NexusColors.blue700
-    static let brandSoft = NexusColors.blue50
-    static let textHeading = NexusColors.navy950
-    static let textPrimary = NexusColors.navy950
-    static let textSecondary = NexusColors.neutral700
-    static let textTertiary = NexusColors.neutral500
-    static let textDisabled = NexusColors.disabledText
-    static let surfaceBase = NexusColors.white
-    static let surfaceElevated = NexusColors.white
-    static let surfaceMuted = NexusColors.neutral100
+    static let brandPrimary = adaptive(NexusColors.blue500, NexusColors.charcoalAction)
+    static let brandPressed = adaptive(NexusColors.blue700, NexusColors.charcoalPressed)
+    static let brandSoft = adaptive(NexusColors.blue50, NexusColors.charcoalAccentSurface)
+    static let textHeading = adaptive(NexusColors.navy950, NexusColors.charcoalText)
+    static let textSecondary = adaptive(NexusColors.neutral700, NexusColors.charcoalSecondary)
+    static let textTertiary = adaptive(NexusColors.neutral500, NexusColors.charcoalSecondary)
+    static let textDisabled = adaptive(NexusColors.disabledText, NexusColors.charcoalOutline)
+    static let surfaceBase = adaptive(NexusColors.white, NexusColors.charcoalSurface)
+    static let surfaceMuted = adaptive(NexusColors.neutral100, NexusColors.charcoalMuted)
+    static let backgroundPage = adaptive(NexusColors.background, NexusColors.charcoalPage)
+    static let borderDefault = adaptive(NexusColors.neutral300, NexusColors.charcoalOutline)
+    static let borderSubtle = adaptive(NexusColors.neutral200, NexusColors.charcoalDivider)
+    static let borderFocus = adaptive(NexusColors.blue600, NexusColors.charcoalAction)
+    static let actionPrimaryText = adaptive(NexusColors.white, NexusColors.navy950)
+    static let successBg = adaptive(NexusColors.success50, NexusColors.charcoalSuccessBg)
+    static let successText = adaptive(NexusColors.successText, NexusColors.charcoalSuccessText)
+    static let warningBg = adaptive(NexusColors.warning50, NexusColors.charcoalWarningBg)
+    static let warningText = adaptive(NexusColors.warningText, NexusColors.charcoalWarningText)
+    static let errorBg = adaptive(NexusColors.error50, NexusColors.charcoalErrorBg)
+    static let errorText = adaptive(NexusColors.errorText, NexusColors.charcoalErrorText)
+    static let disabledBg = adaptive(NexusColors.disabledBg, NexusColors.charcoalMuted)
+    static let overlayScrim = adaptive(NexusColors.overlayScrim, NexusColors.charcoalScrim)
+    static let textPrimary = textHeading
+    static let surfaceElevated = surfaceBase
     static let surfaceSubtle = surfaceMuted
-    static let surfaceHover = NexusColors.neutral100
-    static let surfaceActive = NexusColors.blue50
-    static let backgroundPage = NexusColors.background
-    static let borderDefault = NexusColors.neutral300
-    static let borderSubtle = NexusColors.neutral200
-    static let borderStrong = NexusColors.neutral300
-    static let borderFocus = NexusColors.blue600
-    static let focus = NexusColors.blue600
-    static let actionPrimary = NexusColors.blue500
-    static let actionPressed = NexusColors.blue700
-    static let actionPrimaryText = NexusColors.white
-    static let actionSecondary = NexusColors.white
-    static let actionSecondaryText = NexusColors.navy950
-    static let link = NexusColors.blue600
-    static let success = NexusColors.successText
-    static let successBg = NexusColors.success50
-    static let successText = NexusColors.successText
-    static let warning = NexusColors.warningText
-    static let warningBg = NexusColors.warning50
-    static let warningText = NexusColors.warningText
-    static let error = NexusColors.errorText
-    static let errorBg = NexusColors.error50
-    static let errorText = NexusColors.errorText
-    static let info = NexusColors.blue500
-    static let disabledText = NexusColors.disabledText
-    static let disabledBg = NexusColors.disabledBg
-    static let overlayScrim = NexusColors.overlayScrim
+    static let surfaceHover = surfaceMuted
+    static let surfaceActive = brandSoft
+    static let borderStrong = borderDefault
+    static let focus = borderFocus
+    static let actionPrimary = brandPrimary
+    static let actionPressed = brandPressed
+    static let actionSecondary = surfaceBase
+    static let actionSecondaryText = textPrimary
+    static let link = borderFocus
+    static let success = successText
+    static let warning = warningText
+    static let error = errorText
+    static let info = brandPrimary
+    static let disabledText = textDisabled
+    static let mainBottomBarBorder = adaptive(
+        NexusColors.neutral300.opacity(NexusOpacity.mainBottomBarBorder),
+        .clear
+    )
+    static let mainBottomBarShadow = NexusColors.black
+
+    private static func adaptive(_ light: Color, _ dark: Color) -> Color {
+        let lightColor = UIColor(light)
+        let darkColor = UIColor(dark)
+        return Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? darkColor : lightColor
+        })
+    }
 }
 
 private extension Color {

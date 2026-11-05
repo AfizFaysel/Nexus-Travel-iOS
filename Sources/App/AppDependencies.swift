@@ -19,16 +19,19 @@ struct AppDependencies {
     let preferencesRepository: RemotePreferencesRepository
     let securityRepository: RemoteAccountSecurityRepository
     let airportRepository: RemoteAirportRepository
-    let appTheme: AppTheme
     let profileViewModel: ProfileViewModel
     let preferencesViewModel: PreferencesViewModel
+    let supportRepository: RemoteSupportRepository
     let authRepository: RemoteAuthRepository
     let homeViewModel: HomeViewModel
     let exploreViewModel: ExploreViewModel
     let tripsViewModel: TripsViewModel
 
-    init(sessionStore: any AuthSessionStore = KeychainAuthSessionStore()) {
-        let sharedTransport = HTTPTransport()
+    init(
+        sessionStore: any AuthSessionStore = KeychainAuthSessionStore(),
+        origin: URL = AppConfiguration.productionOrigin
+    ) {
+        let sharedTransport = HTTPTransport(origin: origin)
         let sharedSessionStore = sessionStore
         let sharedAirportCache = AirportCache()
         let sharedSearchResultsCache = SearchResultsCache()
@@ -42,7 +45,6 @@ struct AppDependencies {
         )
         let sharedTokenProvider = AuthTokenProvider(sessionStore: sharedSessionStore)
         let sharedPreferencesStore = ProfilePreferencesStore()
-        let sharedAppTheme = AppTheme()
         let sharedProfileRepository = RemoteProfileRepository(transport: sharedTransport, tokenProvider: sharedTokenProvider)
         let sharedPreferencesRepository = RemotePreferencesRepository(transport: sharedTransport, tokenProvider: sharedTokenProvider, store: sharedPreferencesStore)
         let sharedSecurityRepository = RemoteAccountSecurityRepository(transport: sharedTransport, tokenProvider: sharedTokenProvider)
@@ -84,9 +86,9 @@ struct AppDependencies {
         profileRepository = sharedProfileRepository
         preferencesRepository = sharedPreferencesRepository
         securityRepository = sharedSecurityRepository
-        appTheme = sharedAppTheme
         profileViewModel = ProfileViewModel(repository: sharedProfileRepository, authRepository: sharedAuthRepository)
-        preferencesViewModel = PreferencesViewModel(repository: sharedPreferencesRepository, onTheme: { sharedAppTheme.preference = $0 })
+        preferencesViewModel = PreferencesViewModel(repository: sharedPreferencesRepository)
+        supportRepository = RemoteSupportRepository(transport: sharedTransport)
         authRepository = sharedAuthRepository
         homeViewModel = HomeViewModel(
             homeRepository: RemoteHomeRepository(

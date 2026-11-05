@@ -12,7 +12,7 @@ final class BookingJourneyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["No trips yet"].waitForExistence(timeout: 10))
 
         app.buttons["main-tab-profile"].tap()
-        XCTAssertTrue(app.staticTexts["Guest"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["profile-sign-in"].waitForExistence(timeout: 10))
     }
 
     @MainActor
@@ -338,8 +338,8 @@ final class BookingJourneyUITests: XCTestCase {
         app.launch()
 
         app.buttons["main-tab-profile"].tap()
-        XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 15))
-        app.buttons["Sign in"].tap()
+        XCTAssertTrue(app.buttons["profile-sign-in"].waitForExistence(timeout: 15))
+        app.buttons["profile-sign-in"].tap()
         XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 15))
         app.buttons["Sign up"].tap()
         XCTAssertTrue(app.staticTexts["Create account"].waitForExistence(timeout: 10))
@@ -357,12 +357,12 @@ final class BookingJourneyUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Profile"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["Nexus QA Traveler"].waitForExistence(timeout: 30))
-        app.buttons["Log out"].tap()
-        XCTAssertTrue(app.sheets.buttons["Log out"].waitForExistence(timeout: 10))
-        app.sheets.buttons["Log out"].tap()
-        XCTAssertTrue(app.staticTexts["Guest"].waitForExistence(timeout: 20))
+        app.buttons["profile-sign-out"].tap()
+        XCTAssertTrue(app.alerts.buttons["Sign out"].waitForExistence(timeout: 10))
+        app.alerts.buttons["Sign out"].tap()
+        XCTAssertTrue(app.buttons["profile-sign-in"].waitForExistence(timeout: 20))
 
-        app.buttons["Sign in"].tap()
+        app.buttons["profile-sign-in"].tap()
         XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 15))
         app.textFields["Email"].tap()
         app.textFields["Email"].typeText(email)
@@ -419,12 +419,12 @@ final class BookingJourneyUITests: XCTestCase {
         captureGuestScreenshot("Guest trips", app: app)
 
         app.buttons["main-tab-profile"].tap()
-        XCTAssertTrue(app.staticTexts["Guest"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["Sign in"].exists)
-        XCTAssertTrue(app.buttons["Settings"].exists)
+        XCTAssertTrue(app.buttons["profile-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["Dark appearance"].exists)
+        XCTAssertTrue(app.buttons["Support"].exists)
         captureGuestScreenshot("Guest profile", app: app)
 
-        app.buttons["Sign in"].tap()
+        app.buttons["profile-sign-in"].tap()
         XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 15))
         let authForm = app.scrollViews["auth-form"]
         XCTAssertTrue(authForm.exists)
@@ -438,7 +438,7 @@ final class BookingJourneyUITests: XCTestCase {
         XCTAssertTrue(authForm.buttons["Create account"].isHittable)
         captureGuestScreenshot("Create account sheet", app: app)
         app.buttons["Close"].tap()
-        XCTAssertTrue(app.staticTexts["Guest"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["profile-sign-in"].waitForExistence(timeout: 10))
     }
 
     @MainActor
@@ -449,7 +449,7 @@ final class BookingJourneyUITests: XCTestCase {
         app.launch()
 
         app.buttons["main-tab-profile"].tap()
-        let profileSignIn = app.buttons["Sign in"]
+        let profileSignIn = app.buttons["profile-sign-in"]
         XCTAssertTrue(profileSignIn.waitForExistence(timeout: 15))
         profileSignIn.tap()
         XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 15))
@@ -472,7 +472,7 @@ final class BookingJourneyUITests: XCTestCase {
         app.launch()
 
         app.buttons["main-tab-profile"].tap()
-        let profileSignIn = app.buttons["Sign in"]
+        let profileSignIn = app.buttons["profile-sign-in"]
         XCTAssertTrue(profileSignIn.waitForExistence(timeout: 15))
         profileSignIn.tap()
         XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 15))

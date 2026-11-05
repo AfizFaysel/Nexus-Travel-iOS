@@ -38,17 +38,22 @@ struct URLSessionHTTPDataLoader: HTTPDataLoading {
 /// Executes requests and classifies transport-level failures.
 struct HTTPTransport: Sendable {
     private let loader: any HTTPDataLoading
+    private let origin: URL
     private let logger = Logger(subsystem: "com.nexustravel.NexusTravel", category: "HTTP")
 
     /// Creates transport using native URLSession loader by default.
-    init(loader: any HTTPDataLoading = URLSessionHTTPDataLoader()) {
+    init(
+        origin: URL = AppConfiguration.productionOrigin,
+        loader: any HTTPDataLoading = URLSessionHTTPDataLoader()
+    ) {
+        self.origin = origin
         self.loader = loader
     }
 
     /// Executes one request while preserving status codes and cancellation.
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         let correlationID = UUID().uuidString
-        let urlRequest = try request.urlRequest()
+        let urlRequest = try request.urlRequest(origin: origin)
         logger.debug("HTTP start correlation=\(correlationID, privacy: .private) method=\(request.method.rawValue, privacy: .public)")
         do {
             let (data, response) = try await loader.data(for: urlRequest)

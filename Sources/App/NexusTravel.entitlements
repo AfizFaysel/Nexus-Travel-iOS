@@ -7,10 +7,10 @@
         <string>applinks:api.travelwithnexus.com</string>
     </array>
     <key>application-identifier</key>
-    <string>$(AppIdentifierPrefix)com.nexustravel.NexusTravel</string>
+    <string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>keychain-access-groups</key>
     <array>
-        <string>$(AppIdentifierPrefix)com.nexustravel.NexusTravel</string>
+        <string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     </array>
 </dict>
 </plist>

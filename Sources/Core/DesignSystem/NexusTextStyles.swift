@@ -189,8 +189,8 @@ enum NexusText {
 
 extension View {
     /// Applies a Nexus text style with Dynamic Type line spacing and optional tabular figures.
-    func nexusTextStyle(_ style: NexusTextStyle) -> some View {
-        modifier(NexusTextStyleModifier(style: style))
+    func nexusTextStyle(_ style: NexusTextStyle, matchesLineHeight: Bool = false) -> some View {
+        modifier(NexusTextStyleModifier(style: style, matchesLineHeight: matchesLineHeight))
     }
 }
 
@@ -206,10 +206,16 @@ private struct NexusTextStyleModifier: ViewModifier {
 
     @ScaledMetric private var lineSpacing: CGFloat
 
-    init(style: NexusTextStyle) {
+    init(style: NexusTextStyle, matchesLineHeight: Bool) {
         self.style = style
+        let baseSpacing: CGFloat
+        if matchesLineHeight, let font = UIFont(name: style.fontWeight.postScriptName, size: style.baseSize) {
+            baseSpacing = max(0, style.baseLineHeight - font.lineHeight)
+        } else {
+            baseSpacing = style.baseLineSpacing
+        }
         _lineSpacing = ScaledMetric(
-            wrappedValue: style.baseLineSpacing,
+            wrappedValue: baseSpacing,
             relativeTo: style.relativeTo
         )
     }

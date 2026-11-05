@@ -24,6 +24,9 @@ struct AppShell: View {
     let airportRepository: any AirportRepository
     let profileViewModel: ProfileViewModel
     let preferencesViewModel: PreferencesViewModel
+    let supportRepository: RemoteSupportRepository
+    let appearance: ThemePreference
+    let onAppearanceChange: (ThemePreference) -> Void
     let authRepository: any AuthRepository
     let bookingFlowState: BookingFlowState
 
@@ -112,6 +115,9 @@ struct AppShell: View {
             ProfileScreenRoute(
                 viewModel: profileViewModel,
                 router: router,
+                supportRepository: supportRepository,
+                appearance: appearance,
+                onAppearanceChange: onAppearanceChange,
                 rootScrollTarget: $profileRootScrollTarget,
                 onSignedOut: {
                     bookingFlowState.completeLogout()
@@ -176,23 +182,24 @@ private struct MainBottomBar: View {
                 item(tab)
             }
         }
-        .frame(height: NexusLayout.mainBottomBarHeight)
+        .padding(.vertical, NexusSpacing.space8)
+        .frame(minHeight: NexusLayout.mainBottomBarHeight)
         .padding(.horizontal, NexusSpacing.space12)
         .background(NexusSemanticColors.surfaceBase)
         .clipShape(RoundedRectangle(cornerRadius: NexusRadius.xxxl))
         .overlay {
             RoundedRectangle(cornerRadius: NexusRadius.xxxl)
-                .stroke(NexusSemanticColors.borderDefault.opacity(0.2), lineWidth: NexusBorder.hairline)
+                .stroke(NexusSemanticColors.mainBottomBarBorder, lineWidth: NexusBorder.hairline)
         }
         .shadow(
-            color: Color.black.opacity(NexusElevation.mainBottomBarAmbientOpacity),
+            color: NexusSemanticColors.mainBottomBarShadow.opacity(NexusElevation.mainBottomBarAmbientOpacity),
             radius: NexusElevation.mainBottomBarAmbientRadius,
             y: NexusElevation.mainBottomBarAmbientY
         )
         .shadow(
-            color: Color.black.opacity(NexusElevation.mainBottomBarContactOpacity),
-            radius: NexusElevation.mainBottomBarContactRadius,
-            y: NexusElevation.mainBottomBarContactY
+            color: NexusSemanticColors.mainBottomBarShadow.opacity(NexusElevation.mainBottomBarDirectionalOpacity),
+            radius: NexusElevation.mainBottomBarDirectionalRadius,
+            y: NexusElevation.mainBottomBarDirectionalY
         )
         .padding(.horizontal, NexusSpacing.space16)
         .padding(.vertical, NexusSpacing.space12)
@@ -213,7 +220,7 @@ private struct MainBottomBar: View {
                     )
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }
-            .foregroundStyle(isSelected ? NexusSemanticColors.brandPrimary : NexusColors.slate500)
+            .foregroundStyle(isSelected ? NexusSemanticColors.brandPrimary : NexusSemanticColors.textTertiary)
             .frame(maxWidth: .infinity, minHeight: NexusLayout.touchRecommended)
             .contentShape(Rectangle())
         }
@@ -374,7 +381,7 @@ private struct AppDestinations: ViewModifier {
             case .settings:
                 SettingsScreen(viewModel: preferencesViewModel, router: router)
             case .theme:
-                ThemeScreen(viewModel: preferencesViewModel)
+                ThemeScreen()
             case .homeAirport:
                 HomeAirportScreen(viewModel: preferencesViewModel, airports: airportRepository)
             case .notificationSettings:

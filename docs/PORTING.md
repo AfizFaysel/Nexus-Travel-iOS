@@ -107,8 +107,10 @@ final class Router {
 
 Compact choice sheets use content-measured native height detents, not a fixed `.medium`
 detent; accessibility text uses scrollable `.large`. Measure intrinsic content before
-any expanding frame. Simulator Keychain gates require native ad-hoc signing; unsigned
-UI previews do not verify persistent-session behavior.
+any expanding frame. Simulator Keychain gates require native ad-hoc signing.
+Use the VisualEvidence simulator configuration for external fixture runs. Its bundle
+identifier and Keychain group isolate fixture sessions. Profile Appearance persists
+on the device and applies at launch. Account preference refreshes do not control it.
 
 | ID | Gap | Decision |
 |---|---|---|

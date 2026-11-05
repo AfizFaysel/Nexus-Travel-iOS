@@ -45,14 +45,14 @@ struct NexusTokensTests {
 
         #expect([
             NexusElevation.mainBottomBarAmbientOpacity,
-            NexusElevation.mainBottomBarContactOpacity
-        ] == [0.08, 0.06])
+            NexusElevation.mainBottomBarDirectionalOpacity
+        ] == [0.035, 0.23])
         #expect([
             NexusElevation.mainBottomBarAmbientRadius,
             NexusElevation.mainBottomBarAmbientY,
-            NexusElevation.mainBottomBarContactRadius,
-            NexusElevation.mainBottomBarContactY
-        ] == [12, 2, 3, 1])
+            NexusElevation.mainBottomBarDirectionalRadius,
+            NexusElevation.mainBottomBarDirectionalY
+        ] == [6, 1, 12, 15])
     }
 
     @Test func adaptiveSpacingUsesExactAndroidProfiles() throws {
