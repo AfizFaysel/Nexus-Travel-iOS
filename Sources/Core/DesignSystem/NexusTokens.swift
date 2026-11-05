@@ -273,6 +273,7 @@ enum NexusMotion {
     static let durationSuccessMillis = 300
     static let durationShimmerMillis = 1_400
     static let durationFastSeconds = Double(durationFastMillis) / 1_000
+    static let mainBottomBarPressedScale: CGFloat = 0.97
     static let homeServiceTransition = Animation.spring(response: 0.4, dampingFraction: 1)
     static let authModeTransition = Animation.spring(response: 0.4, dampingFraction: 1)
     static let reducedHomeServiceTransition = Animation.easeOut(duration: durationFastSeconds)

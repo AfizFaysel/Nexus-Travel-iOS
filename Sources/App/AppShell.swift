@@ -241,7 +241,7 @@ private struct MainBottomBarItemStyle: ButtonStyle {
                     .fill(configuration.isPressed ? NexusSemanticColors.surfaceHover : Color.clear)
             )
             .clipShape(RoundedRectangle(cornerRadius: NexusRadius.lg))
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? NexusMotion.mainBottomBarPressedScale : 1)
             .animation(
                 reduceMotion ? nil : .easeOut(duration: NexusMotion.durationFastSeconds),
                 value: configuration.isPressed
