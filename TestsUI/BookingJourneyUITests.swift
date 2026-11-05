@@ -489,8 +489,8 @@ final class BookingJourneyUITests: XCTestCase {
         offer.tap()
 
         XCTAssertTrue(app.navigationBars["Flight Details"].waitForExistence(timeout: 90))
+        XCTAssertTrue(app.staticTexts["Baggage allowance"].waitForExistence(timeout: 90))
         XCTAssertFalse(app.staticTexts["Could not load flight details"].exists)
-        XCTAssertTrue(app.staticTexts["Baggage allowance"].exists)
         XCTAssertTrue(app.staticTexts["Cabin baggage"].exists)
         XCTAssertTrue(app.staticTexts["Checked baggage"].exists)
         XCTAssertTrue(app.buttons["Fare rules"].exists)
