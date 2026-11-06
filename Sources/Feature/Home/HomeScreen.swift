@@ -132,6 +132,7 @@ struct HomeScreen: View {
     let onRetry: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         GeometryReader { geometry in
@@ -182,8 +183,9 @@ struct HomeScreen: View {
     }
 
     private func heroBackground(_ metrics: HomeHeroMetrics) -> some View {
-        Group {
-            if let path = Bundle.main.path(forResource: "home_hero_flight_wing", ofType: "png"),
+        let asset = NexusThemeAssets.homeHero(dark: colorScheme == .dark)
+        return Group {
+            if let path = Bundle.main.path(forResource: asset, ofType: "png"),
                let image = UIImage(contentsOfFile: path) {
                 Image(uiImage: image)
                     .resizable()
