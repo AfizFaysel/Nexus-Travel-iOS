@@ -1,7 +1,18 @@
+import Foundation
 import Testing
 @testable import NexusTravel
 
 struct HomeScreenStateTests {
+    @Test func homeHeroAssetsMatchAppearanceAndAreBundled() {
+        let day = NexusThemeAssets.homeHero(dark: false)
+        let night = NexusThemeAssets.homeHero(dark: true)
+
+        #expect(day == "home_hero_flight_wing")
+        #expect(night == "home_hero_flight_wing_night")
+        #expect(Bundle.main.url(forResource: day, withExtension: "png") != nil)
+        #expect(Bundle.main.url(forResource: night, withExtension: "png") != nil)
+    }
+
     @Test func contentWidthExpandsOnWideDisplays() {
         #expect(HomeLayoutMetrics(screenWidth: 390).contentMaxWidth == NexusLayout.contentMaxWidth)
         #expect(HomeLayoutMetrics(screenWidth: 820).contentMaxWidth == NexusLayout.homeContentMaxWidthWide)
