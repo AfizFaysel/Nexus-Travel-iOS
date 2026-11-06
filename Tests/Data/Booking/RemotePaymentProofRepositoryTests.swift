@@ -3,6 +3,27 @@ import Testing
 @testable import NexusTravel
 
 struct RemotePaymentProofRepositoryTests {
+    @Test func loadsCurrentInstructionsFromTheCustomerTripRoute() async throws {
+        let loader = PaymentProofLoader(responses: [
+            Self.response(200, #"{"canSubmitProof":true,"amountMinor":12345,"currency":"ETB","paymentReason":"ABC123","deadline":null,"accounts":[{"id":"bank-1","bankName":"Test Bank","identifier":"0001","legalName":"Test Account"}]}"#)
+        ])
+        let repository = RemotePaymentProofRepository(
+            transport: HTTPTransport(loader: loader), tokenProvider: AuthTokenProvider(sessionStore: PaymentProofSessionStore())
+        )
+
+        let result = try await repository.instructions(bookingId: "b-1")
+        guard case let .available(instructions) = result else {
+            Issue.record("Expected customer payment instructions")
+            return
+        }
+        #expect(instructions.amountMinor == 12345)
+        #expect(instructions.accounts.first?.identifier == "0001")
+        let request = try #require(await loader.requests.first)
+        #expect(request.url?.path == "/api/v1/mobile/trips/b-1/payment-instructions")
+        #expect(request.httpMethod == "GET")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
+    }
+
     @Test func uploadUsesMobileHandshakeAndBearerFreeSignedPut() async throws {
         let loader = PaymentProofLoader(responses: [
             Self.response(201, #"{"uploadId":"up-1","status":"PENDING","uploadUrl":"https://signed.example/proof","requiredHeaders":{"Content-Type":"application/pdf","x-meta":"proof"}}"#),

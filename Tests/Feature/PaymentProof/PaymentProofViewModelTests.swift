@@ -3,6 +3,23 @@ import Testing
 
 @MainActor
 struct PaymentProofViewModelTests {
+    @Test func paymentInstructionsPreserveTheSelectedAccountOnRefresh() async throws {
+        let instructions = PaymentInstructions(canSubmitProof: true, amountMinor: 12345, currency: "ETB",
+            paymentReason: "ABC123", deadline: nil, accounts: [
+                .init(id: "first", bankName: "Test Bank", identifier: "0001", legalName: "Test Account"),
+                .init(id: "second", bankName: "Other Bank", identifier: "0002", legalName: "Test Account")
+            ])
+        let repository = PaymentProofFakeRepository(result: .success, instructions: instructions)
+        let model = PaymentProofViewModel(bookingId: "b-1", repository: repository, statusCheck: heldBookingStatus)
+
+        try await model.verifyStatus()
+        #expect(model.state.selectedAccount?.id == "first")
+        model.selectAccount("second")
+        try await model.verifyStatus()
+        #expect(model.state.selectedAccount?.id == "second")
+        #expect(model.state.canUploadProof)
+    }
+
     @Test func successPublishesUploadedCopy() async throws {
         let repository = PaymentProofFakeRepository(result: .success)
         let viewModel = PaymentProofViewModel(bookingId: "b-1", repository: repository, statusCheck: heldBookingStatus)
