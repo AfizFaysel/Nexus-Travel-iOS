@@ -32,6 +32,7 @@ struct SearchResultUiOffer: Equatable, Sendable {
     let outbound: SearchResultUiLeg
     let inbound: SearchResultUiLeg?
     let legs: [SearchResultUiLeg]
+    let priceCurrency: String
     let priceAmount: Int
     let priceLabel: String
     let oldPriceLabel: String?
@@ -50,7 +51,7 @@ struct SearchResultUiOffer: Equatable, Sendable {
         SearchResultUiOffer(id: id, reference: reference, airlineCode: airlineCode, airlineName: airlineName,
             airlineLogoURL: airlineLogoURL,
             flightNumber: flightNumber, outbound: outbound, inbound: inbound, legs: legs,
-            priceAmount: priceAmount, priceLabel: priceLabel, oldPriceLabel: oldPriceLabel,
+            priceCurrency: priceCurrency, priceAmount: priceAmount, priceLabel: priceLabel, oldPriceLabel: oldPriceLabel,
             priceMetaLabel: priceMetaLabel, priceDigitCount: priceDigitCount, seatsLeftLabel: seatsLeftLabel,
             badgeLabel: badgeLabel, bookingStatusLabel: label, refundable: refundable,
             bestPriceSortKey: bestPriceSortKey, fastestSortKey: fastestSortKey,
@@ -69,6 +70,8 @@ struct SearchResultUiLeg: Equatable, Sendable {
     let stopLabel: String
     let compactStopLabel: String
     let departureHour: Int
+    let arrivalHour: Int
+    let durationMinutes: Int
 }
 
 extension FlightOffer {
@@ -79,7 +82,7 @@ extension FlightOffer {
             id: id, reference: reference, airlineCode: airline.code, airlineName: airline.name,
             airlineLogoURL: airline.logoURL,
             flightNumber: flightNumber, outbound: outbound.toSearchResultUiLeg(),
-            inbound: inbound?.toSearchResultUiLeg(), legs: displayLegs, priceAmount: price.amount,
+            inbound: inbound?.toSearchResultUiLeg(), legs: displayLegs, priceCurrency: price.currency, priceAmount: price.amount,
             priceLabel: price.formatted.removingPrefix("\(price.currency) "),
             oldPriceLabel: oldPrice.map { $0.formatted.removingPrefix("\($0.currency) ") },
             priceMetaLabel: "\(price.currency) · \(tripType.searchLabel)",
@@ -94,11 +97,23 @@ extension FlightOffer {
 
 extension Array where Element == SearchResultUiOffer {
     /// Applies composable filters and stable Android-equivalent ordering.
-    func applyingSearchResultFiltersAndSort(filters: Set<SearchFilter>, sortOption: SortOption) -> [SearchResultUiOffer] {
+    func applyingSearchResultFiltersAndSort(
+        filters: Set<SearchFilter>,
+        sortOption: SortOption,
+        airlineCodes: Set<String> = [],
+        options: SearchFilterOptions = .init()
+    ) -> [SearchResultUiOffer] {
+        let departure = options.departureWindow ?? (filters.contains(.morning) ? .morning : nil)
         let filtered = filter { offer in
-            (!filters.contains(.nonStop) || offer.legs.allSatisfy { $0.stopCount == 0 })
+            if !airlineCodes.isEmpty, !airlineCodes.contains(offer.airlineCode.uppercased()) { return false }
+            if let maximum = options.maximumPriceMinor,
+               offer.priceCurrency != "ETB" || !(1...maximum).contains(offer.priceAmount) { return false }
+            if let maximum = options.maximumDurationMinutes,
+               offer.legs.isEmpty || !offer.legs.allSatisfy({ (1...maximum).contains($0.durationMinutes) }) { return false }
+            return (!filters.contains(.nonStop) || offer.legs.allSatisfy { $0.stopCount == 0 })
                 && (!filters.contains(.oneStop) || offer.legs.contains { $0.stopCount == 1 })
-                && (!filters.contains(.morning) || (5...11).contains(offer.outbound.departureHour))
+                && (departure?.contains(offer.outbound.departureHour) ?? true)
+                && (options.arrivalWindow?.contains(offer.outbound.arrivalHour) ?? true)
         }
         guard sortOption != .recommended else { return filtered }
         return filtered.enumerated().sorted { lhs, rhs in
@@ -129,7 +144,7 @@ private extension FlightLeg {
             departureTimeLabel: departureTime.hhmm, arrivalTimeLabel: arrivalTime.hhmm,
             durationLabel: "\(durationMinutes / 60)h \(durationMinutes % 60)m", stopCount: stopCount,
             stopLabel: stopLabel, compactStopLabel: stopCount == 0 ? "Non-stop" : "\(stopCount) stop",
-            departureHour: departureTime.hour
+            departureHour: departureTime.hour, arrivalHour: arrivalTime.hour, durationMinutes: durationMinutes
         )
     }
 }

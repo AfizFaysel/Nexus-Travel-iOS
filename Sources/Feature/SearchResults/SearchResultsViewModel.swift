@@ -8,9 +8,15 @@ struct SearchResultsUiState: Equatable, Sendable {
     var allFlights: [SearchResultUiOffer] = []
     var visibleFlights: [SearchResultUiOffer] = []
     var selectedFilters: Set<SearchFilter> = []
+    var selectedAirlines: Set<String> = []
+    var filterOptions = SearchFilterOptions()
     var sortOption: SortOption = .recommended
     var errorMessage: String?
     var unavailableOfferNotice: String?
+
+    var hasFilters: Bool {
+        !selectedFilters.isEmpty || !selectedAirlines.isEmpty || filterOptions != .init()
+    }
 
     var resultCount: Int { visibleFlights.count }
     func resultCountLabel() -> String { "\(resultCount) \(resultCount == 1 ? "flight" : "flights") found" }
@@ -26,6 +32,7 @@ enum SearchResultsUiEvent: Equatable, Sendable {
     case backClicked, modifyClicked, retryClicked, nearbyDatesClicked, clearFiltersClicked
     case filterToggled(SearchFilter)
     case sortChanged(SortOption)
+    case filtersApplied(Set<SearchFilter>, Set<String>, SearchFilterOptions)
     case flightCardClicked(FlightOfferReference)
 }
 
@@ -85,8 +92,15 @@ final class SearchResultsViewModel {
         case .retryClicked: try? await loadResults()
         case let .filterToggled(filter): toggle(filter)
         case let .sortChanged(sort): update(sort: sort)
+        case let .filtersApplied(filters, airlines, options):
+            uiState.selectedFilters = filters
+            uiState.selectedAirlines = Set(airlines.map { $0.uppercased() })
+            uiState.filterOptions = options
+            updateVisible()
         case .clearFiltersClicked:
             uiState.selectedFilters.removeAll()
+            uiState.selectedAirlines.removeAll()
+            uiState.filterOptions = .init()
             updateVisible()
         }
     }
@@ -129,6 +143,12 @@ final class SearchResultsViewModel {
     }
 
     private func toggle(_ filter: SearchFilter) {
+        if filter == .morning, let departure = uiState.filterOptions.departureWindow {
+            uiState.filterOptions.departureWindow = departure == .morning ? nil : .morning
+            uiState.selectedFilters.remove(.morning)
+            updateVisible()
+            return
+        }
         if uiState.selectedFilters.contains(filter) {
             uiState.selectedFilters.remove(filter)
         } else {
@@ -145,7 +165,8 @@ final class SearchResultsViewModel {
 
     private func updateVisible() {
         uiState.visibleFlights = uiState.allFlights.applyingSearchResultFiltersAndSort(
-            filters: uiState.selectedFilters, sortOption: uiState.sortOption
+            filters: uiState.selectedFilters, sortOption: uiState.sortOption,
+            airlineCodes: uiState.selectedAirlines, options: uiState.filterOptions
         )
         uiState.resultState = uiState.visibleFlights.isEmpty ? .empty : .content
     }

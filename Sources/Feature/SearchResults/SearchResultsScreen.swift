@@ -44,6 +44,7 @@ struct SearchResultsScreen: View {
     let state: SearchResultsUiState
     let onEvent: (SearchResultsUiEvent) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsFilters = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -56,7 +57,8 @@ struct SearchResultsScreen: View {
             }
 
             VStack(spacing: NexusSpacing.space4) {
-                SearchResultsHeader(state: state, metrics: metrics, onEvent: onEvent)
+                SearchResultsHeader(state: state, metrics: metrics, onEvent: onEvent,
+                                    onOpenFilters: { showsFilters = true })
                 content(metrics: metrics)
             }
             .frame(maxWidth: NexusLayout.homeContentMaxWidthWide)
@@ -64,6 +66,12 @@ struct SearchResultsScreen: View {
         }
         .background(NexusSemanticColors.backgroundPage)
         .navigationBarBackButtonHidden(true)
+        .sheet(isPresented: $showsFilters) {
+            SearchFiltersSheet(state: state) { filters, airlines, options in
+                onEvent(.filtersApplied(filters, airlines, options))
+                showsFilters = false
+            }
+        }
     }
 
     @ViewBuilder private func content(metrics: SearchResultRowMetrics?) -> some View {
@@ -106,7 +114,7 @@ struct SearchResultsScreen: View {
                     })
                         .padding(.horizontal, NexusLayout.screenMarginCompact)
                 }
-                if !state.selectedFilters.isEmpty {
+                if state.hasFilters {
                     SearchResultsFilterBanner(filters: state.selectedFilters) {
                         onEvent(.clearFiltersClicked)
                     }
@@ -136,12 +144,15 @@ struct SearchResultsScreen: View {
         ContentUnavailableView {
             Label("No flights found", systemImage: NexusIconName.search.systemName)
         } description: {
-            Text(state.unavailableOfferNotice ?? (state.selectedFilters.isEmpty
+            Text(state.unavailableOfferNotice ?? (!state.hasFilters
                  ? "We couldn't find available flights for these dates. Try adjusting your search to see more options."
                  : "We couldn't find available flights for these filters. Try adjusting your search to see more options."))
         } actions: {
             NexusPrimaryButton("Try searching nearby dates", fillsWidth: true) { onEvent(.nearbyDatesClicked) }
             NexusTextButton("Modify search") { onEvent(.modifyClicked) }
+            if state.hasFilters {
+                NexusTextButton("Clear filters") { onEvent(.clearFiltersClicked) }
+            }
         }
         .padding(NexusLayout.screenMargin)
     }
@@ -163,6 +174,7 @@ private struct SearchResultsHeader: View {
     let state: SearchResultsUiState
     let metrics: SearchResultRowMetrics?
     let onEvent: (SearchResultsUiEvent) -> Void
+    let onOpenFilters: () -> Void
 
     var body: some View {
         VStack(spacing: NexusSpacing.space4) {
@@ -188,7 +200,7 @@ private struct SearchResultsHeader: View {
                     .padding(.horizontal, metrics?.horizontalMargin ?? NexusLayout.screenMarginCompact)
             }
 
-            SearchResultsFilters(state: state, onEvent: onEvent)
+            SearchResultsFilters(state: state, onEvent: onEvent, onOpenFilters: onOpenFilters)
         }
     }
 }
@@ -250,10 +262,17 @@ private struct SearchResultsSummary: View {
 private struct SearchResultsFilters: View {
     let state: SearchResultsUiState
     let onEvent: (SearchResultsUiEvent) -> Void
+    let onOpenFilters: () -> Void
 
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: NexusSpacing.space8) {
+                Button(action: onOpenFilters) {
+                    SearchResultsChipLabel(title: "Filters", selected: state.hasFilters, leadingIcon: .filter)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("search-filters")
+
                 Menu {
                     ForEach([SortOption.recommended, .bestPrice, .fastest, .departureEarly], id: \.self) { option in
                         Button(option.label) { onEvent(.sortChanged(option)) }
@@ -269,17 +288,19 @@ private struct SearchResultsFilters: View {
                 .accessibilityIdentifier("search-sort")
 
                 ForEach([SearchFilter.nonStop, .bestPrice, .morning, .oneStop], id: \.self) { filter in
+                    let selected = filter == .morning && state.filterOptions.departureWindow == .morning
+                        || state.selectedFilters.contains(filter)
                     Button { onEvent(.filterToggled(filter)) } label: {
                         SearchResultsChipLabel(
                             title: filter.label,
-                            selected: state.selectedFilters.contains(filter),
+                            selected: selected,
                             leadingIcon: nil,
                             showsSun: filter == .morning
                         )
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("search-filter-\(filter.rawValue.kebabCased)")
-                    .accessibilityValue(state.selectedFilters.contains(filter) ? "Selected" : "Not selected")
+                    .accessibilityValue(selected ? "Selected" : "Not selected")
                 }
             }
             .padding(.horizontal, NexusLayout.screenMarginCompact)
@@ -366,10 +387,12 @@ private struct SearchResultsFilterBanner: View {
             NexusIcon(name: .filter, size: NexusIconSize.sm)
             Text("Filter applied")
                 .nexusTextStyle(NexusText.styles.label)
-            Text("· \(summary)")
-                .nexusTextStyle(NexusText.styles.bodySmall)
-                .foregroundStyle(NexusSemanticColors.textSecondary)
-                .lineLimit(1)
+            if !summary.isEmpty {
+                Text("· \(summary)")
+                    .nexusTextStyle(NexusText.styles.bodySmall)
+                    .foregroundStyle(NexusSemanticColors.textSecondary)
+                    .lineLimit(1)
+            }
             Spacer(minLength: NexusSpacing.space4)
             Button(action: clear) { NexusIcon(name: .close, size: NexusIconSize.sm) }
                 .frame(width: NexusLayout.touchMin, height: NexusLayout.touchMin)
