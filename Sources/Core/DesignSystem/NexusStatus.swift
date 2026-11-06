@@ -11,6 +11,11 @@ enum NexusStatus: CaseIterable, Equatable {
     case restored
     case loading
 
+    /// Colors for compact feedback next to live booking content.
+    var inlineColors: NexusStatusColors {
+        self == .offline ? NexusStatus.warning.colors : colors
+    }
+
     /// Colors assigned to this status by Android design semantics.
     var colors: NexusStatusColors {
         switch self {

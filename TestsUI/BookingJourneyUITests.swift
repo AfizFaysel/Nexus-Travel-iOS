@@ -9,7 +9,7 @@ final class BookingJourneyUITests: XCTestCase {
         let tripsTab = app.buttons["main-tab-trips"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 30))
         tripsTab.tap()
-        XCTAssertTrue(app.staticTexts["No trips yet"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Your trips, in one place"].waitForExistence(timeout: 10))
 
         app.buttons["main-tab-profile"].tap()
         XCTAssertTrue(app.buttons["profile-sign-in"].waitForExistence(timeout: 10))
@@ -414,8 +414,8 @@ final class BookingJourneyUITests: XCTestCase {
         let tripsTab = app.buttons["main-tab-trips"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 15))
         tripsTab.tap()
-        XCTAssertTrue(app.staticTexts["No trips yet"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["Sign in to view trips"].exists)
+        XCTAssertTrue(app.staticTexts["Your trips, in one place"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["trips-sign-in"].exists)
         captureGuestScreenshot("Guest trips", app: app)
 
         app.buttons["main-tab-profile"].tap()

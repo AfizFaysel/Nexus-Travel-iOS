@@ -112,7 +112,7 @@ struct NexusAdaptiveSpacing: Equatable {
                 stickyCtaPaddingH: 24,
                 stickyCtaPaddingV: 12,
                 stickyCtaZoneMinHeight: 96,
-                contentBottomPaddingWithCta: 128
+                contentBottomPaddingWithCta: NexusLayout.defaultContentBottomPaddingWithCta
             )
         case .spacious:
             Self(
@@ -178,6 +178,8 @@ struct NexusAdaptiveSpacing: Equatable {
 
 /// Android-mirrored corner-radius tokens in points.
 enum NexusRadius {
+    static let contextualButton: CGFloat = 14
+    static let airlineLogoTile: CGFloat = 10
     static let xs: CGFloat = 4
     static let sm: CGFloat = 8
     static let md: CGFloat = 12
@@ -189,6 +191,15 @@ enum NexusRadius {
 
 /// Android-mirrored layout tokens in points.
 enum NexusLayout {
+    static let tripTabIndicatorHeight: CGFloat = 2
+    static let tripLogoWidth: CGFloat = 48
+    static let tripLogoHeight: CGFloat = 32
+    static let airlineLogoInset: CGFloat = 6
+    static let airlineLogoTileMaximum: CGFloat = 40
+    static let tripNarrowWidth: CGFloat = 360
+    static let contextualButtonHeight: CGFloat = 52
+    static let defaultContentBottomPaddingWithCta: CGFloat = 128
+    static let compactActionMinWidth: CGFloat = 160
     static let screenMargin: CGFloat = 24
     static let screenMarginCompact: CGFloat = 16
     static let inputHeight: CGFloat = 56
@@ -267,6 +278,7 @@ enum NexusIconSize {
 
 /// Android-mirrored motion durations in milliseconds.
 enum NexusMotion {
+    static let buttonPressedScale: CGFloat = 0.97
     static let durationFastMillis = 120
     static let durationBaseMillis = 180
     static let durationSheetMillis = 250

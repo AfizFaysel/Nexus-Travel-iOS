@@ -1,4 +1,3 @@
-import Network
 import SwiftUI
 
 struct ProfileScreenRoute: View {
@@ -31,7 +30,7 @@ struct ProfileScreenRoute: View {
         }
         .task(id: viewModel.state.isRecoverableError) {
             guard viewModel.state.isRecoverableError else { return }
-            await retryWhenNetworkReturns()
+            if await NetworkRecovery.waitForConnectionReturn() { retry() }
         }
         .task(id: signOutRequested) {
             guard signOutRequested else { return }
@@ -63,27 +62,6 @@ struct ProfileScreenRoute: View {
         loadRequest += 1
     }
 
-    private func retryWhenNetworkReturns() async {
-        let monitor = NWPathMonitor()
-        let availability = AsyncStream<Bool>(bufferingPolicy: .bufferingNewest(1)) { continuation in
-            monitor.pathUpdateHandler = { path in
-                continuation.yield(path.status == .satisfied)
-            }
-            continuation.onTermination = { _ in monitor.cancel() }
-            monitor.start(queue: DispatchQueue(label: "com.nexustravel.profile-connectivity"))
-        }
-        defer { monitor.cancel() }
-
-        var wasOffline = false
-        for await isOnline in availability {
-            guard !Task.isCancelled else { return }
-            if isOnline && wasOffline {
-                retry()
-                return
-            }
-            wasOffline = !isOnline
-        }
-    }
 }
 
 private struct ProfileScreen: View {

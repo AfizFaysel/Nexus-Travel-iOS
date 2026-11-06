@@ -42,14 +42,16 @@ struct TripsGuestStateTests {
 }
 
 private struct GuestTripsRepository: TripsRepository {
-    func trips(group: TripGroup, forceRefresh: Bool) async throws -> TripPageState { .loading }
+    func trips(view: TripView, forceRefresh: Bool, cursor: String?) async throws -> TripPageState { .loading }
+    func requestSupplierRefresh(bookingIDs: [String]) async throws -> TripSupplierRefreshResult { .accepted(pending: false) }
     func tripDetail(id: String, forceRefresh: Bool) async throws -> TripDetailResult { .failed }
     func resolveTicketDocument(id: String) async throws -> TicketDocumentResult { .unknownError }
     func cacheTicketPdf(id: String, downloadURL: URL) async throws -> CachedTicketResult { .unknownError }
 }
 
 private struct ThrowingTripsRepository: TripsRepository {
-    func trips(group: TripGroup, forceRefresh: Bool) async throws -> TripPageState { throw TripsLoadError.failed }
+    func trips(view: TripView, forceRefresh: Bool, cursor: String?) async throws -> TripPageState { throw TripsLoadError.failed }
+    func requestSupplierRefresh(bookingIDs: [String]) async throws -> TripSupplierRefreshResult { .accepted(pending: false) }
     func tripDetail(id: String, forceRefresh: Bool) async throws -> TripDetailResult { .failed }
     func resolveTicketDocument(id: String) async throws -> TicketDocumentResult { .unknownError }
     func cacheTicketPdf(id: String, downloadURL: URL) async throws -> CachedTicketResult { .unknownError }

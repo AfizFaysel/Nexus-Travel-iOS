@@ -104,6 +104,8 @@ struct NexusTravelTextStyles: Sendable {
 
     /// The small body style.
     let bodySmall: NexusTextStyle
+    let tripStatus: NexusTextStyle
+    let airlineLogoInitial: NexusTextStyle
 
     /// The caption style.
     let caption: NexusTextStyle
@@ -168,6 +170,8 @@ enum NexusText {
         body: NexusTextStyle(fontWeight: .regular, baseSize: 16, baseLineHeight: 24, relativeTo: .body),
         bodyLarge: NexusTextStyle(fontWeight: .regular, baseSize: 18, baseLineHeight: 28, relativeTo: .body),
         bodySmall: NexusTextStyle(fontWeight: .regular, baseSize: 14, baseLineHeight: 20, relativeTo: .subheadline),
+        tripStatus: NexusTextStyle(fontWeight: .semibold, baseSize: 14, baseLineHeight: 20, relativeTo: .subheadline),
+        airlineLogoInitial: NexusTextStyle(fontWeight: .extrabold, baseSize: 14, baseLineHeight: 18, relativeTo: .headline),
         caption: NexusTextStyle(fontWeight: .medium, baseSize: 12, baseLineHeight: 16, relativeTo: .caption),
         label: NexusTextStyle(fontWeight: .medium, baseSize: 14, baseLineHeight: 18, relativeTo: .headline),
         formInput: NexusTextStyle(fontWeight: .regular, baseSize: 17, baseLineHeight: 24, relativeTo: .body),

@@ -45,6 +45,36 @@ extension NexusStatusChip where LeadingContent == EmptyView {
     }
 }
 
+/// Compact inline feedback with a status icon and optional retry.
+struct NexusInlineStatusBanner: View {
+    let text: String
+    let status: NexusStatus
+    var onRetry: (() -> Void)?
+
+    var body: some View {
+        let colors = status.inlineColors
+        HStack(spacing: NexusSpacing.space8) {
+            NexusIcon(name: status == .offline ? .offline : .error, size: NexusIconSize.sm)
+                .accessibilityHidden(true)
+            Text(text)
+                .nexusTextStyle(NexusText.styles.bodySmall)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let onRetry {
+                NexusTextButton("Try again", action: onRetry)
+            }
+        }
+        .foregroundStyle(colors.content)
+        .padding(.leading, NexusSpacing.space12)
+        .padding(.trailing, NexusSpacing.space4)
+        .padding(.vertical, NexusSpacing.space4)
+        .background(colors.container, in: RoundedRectangle(cornerRadius: NexusRadius.md))
+        .overlay {
+            RoundedRectangle(cornerRadius: NexusRadius.md)
+                .strokeBorder(colors.border, lineWidth: NexusBorder.hairline)
+        }
+    }
+}
+
 /// A full-width status banner with optional leading and trailing content.
 struct NexusBanner<LeadingContent: View, TrailingAction: View>: View {
     private let text: String

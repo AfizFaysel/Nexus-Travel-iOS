@@ -3,20 +3,42 @@ import Testing
 @testable import NexusTravel
 
 struct RemoteTripsRepositoryTests {
-    @Test func listUsesBearerAndMapsBackendFixture() async throws {
+    @Test func listUsesActiveHistoryViewAndCursorWithBearer() async throws {
         let loader = TripsLoader(responses: [Self.response(200, Self.pageFixture)])
         let repository = RemoteTripsRepository(
             transport: HTTPTransport(loader: loader), tokenProvider: AuthTokenProvider(sessionStore: TripsSessionStore()),
             cache: TripCache(now: Date(timeIntervalSince1970: 100)), ticketStore: TicketPdfStore()
         )
-        let result = try await repository.refreshTrips(group: .actionRequired)
+        let result = try await repository.trips(view: .history, forceRefresh: true, cursor: "next-page")
         guard case let .content(page, offline, _) = result else { Issue.record("Expected content"); return }
         #expect(page.items.first?.itineraryLabel == "ADD to DXB")
         #expect(offline == false)
         let requests = await loader.requests
         #expect(requests.first?.url?.path == "/api/v1/mobile/trips")
-        #expect(requests.first?.url?.query == "status=ACTION_REQUIRED&limit=20")
+        #expect(requests.first?.url?.query == "view=HISTORY&limit=20&cursor=next-page")
         #expect(requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
+    }
+
+    @Test func supplierRefreshPostsBookingIDsWithBearer() async throws {
+        let bookingID = "96bc66f4-9c39-4c85-8a2b-84788dc49699"
+        let body = #"{"items":[{"bookingId":"96bc66f4-9c39-4c85-8a2b-84788dc49699","status":"QUEUED"}]}"#
+        let loader = TripsLoader(responses: [Self.response(202, body)])
+        let repository = RemoteTripsRepository(
+            transport: HTTPTransport(loader: loader), tokenProvider: AuthTokenProvider(sessionStore: TripsSessionStore()),
+            cache: TripCache(), ticketStore: TicketPdfStore()
+        )
+
+        let result = try await repository.requestSupplierRefresh(bookingIDs: [bookingID])
+
+        #expect(result == .accepted(pending: true))
+        let requests = await loader.requests
+        let request = try #require(requests.first)
+        let data = try #require(request.httpBody)
+        let payload = try JSONDecoder().decode([String: [String]].self, from: data)
+        #expect(payload == ["bookingIds": [bookingID]])
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/api/v1/mobile/trips/refresh")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
     }
 
     @Test func ticketLookupIsAuthenticatedButDownloadIsNot() async throws {

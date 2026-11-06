@@ -4,42 +4,66 @@ import SwiftUI
 struct TripsScreenRoute: View {
     @State private var viewModel: TripsViewModel
     @State private var refreshTask: Task<Void, Never>?
-    @Binding var rootScrollTarget: String?
+    @State private var paginationTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
     let router: Router
 
-    init(viewModel: TripsViewModel, router: Router, rootScrollTarget: Binding<String?>) {
+    init(viewModel: TripsViewModel, router: Router) {
         _viewModel = State(initialValue: viewModel)
-        _rootScrollTarget = rootScrollTarget
         self.router = router
+    }
+
+    private var shouldRetryWhenConnected: Bool {
+        let state = viewModel.state
+        return state.access == .authenticated && (state.offline || state.error != nil)
     }
 
     var body: some View {
         TripsScreen(
             state: viewModel.state,
-            rootScrollTarget: $rootScrollTarget,
-            onSelect: { group in Task { try? await viewModel.select(group) } },
+            onSelect: select,
             onOpen: { router.push(.tripDetail(.init(tripId: $0))) },
-            onUpload: { router.push(.paymentProof(.init(bookingId: $0))) },
             onSignIn: { router.presentAuthentication(for: .trips) },
-            onRetry: { Task { try? await viewModel.load(forceRefresh: true) } }
+            onRetry: refresh,
+            onLoadMore: loadMore
         )
         .task { try? await viewModel.loadIfNeeded() }
+        .task(id: shouldRetryWhenConnected) {
+            guard shouldRetryWhenConnected, await NetworkRecovery.waitForConnectionReturn() else { return }
+            refresh()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { refresh() }
         }
         .onChange(of: router.selectedTab) { _, tab in
             if tab == .trips { refresh() }
         }
-        .onDisappear { refreshTask?.cancel() }
+        .onDisappear {
+            refreshTask?.cancel()
+            paginationTask?.cancel()
+        }
         .refreshable { try? await viewModel.load(forceRefresh: true) }
         .onChange(of: router.authPresentation) { previous, current in
             guard previous == .trips, current == nil else { return }
-            Task { try? await viewModel.load(forceRefresh: true) }
+            refresh()
         }
     }
 
+    private func select(_ view: TripView) {
+        guard viewModel.state.selectedView != view else { return }
+        refreshTask?.cancel()
+        paginationTask?.cancel()
+        refreshTask = Task { try? await viewModel.select(view) }
+    }
+
+    private func loadMore() {
+        guard !viewModel.state.loadingMore else { return }
+        paginationTask?.cancel()
+        paginationTask = Task { try? await viewModel.loadMore() }
+    }
+
     private func refresh() {
+        paginationTask?.cancel()
         refreshTask?.cancel()
         refreshTask = Task { try? await viewModel.load(forceRefresh: true) }
     }
@@ -47,93 +71,277 @@ struct TripsScreenRoute: View {
 
 private struct TripsScreen: View {
     let state: TripsUiState
-    @Binding var rootScrollTarget: String?
-    let onSelect: (TripGroup) -> Void
+    let onSelect: (TripView) -> Void
     let onOpen: (String) -> Void
-    let onUpload: (String) -> Void
     let onSignIn: () -> Void
     let onRetry: () -> Void
+    let onLoadMore: () -> Void
+
     var body: some View {
-        ScrollView { LazyVStack(alignment: .leading, spacing: NexusSpacing.space20) {
-            Text("Trips").nexusTextStyle(NexusText.styles.screenTitle).accessibilityAddTraits(.isHeader).id("trips.header")
-            switch state.access {
-            case .guest: guestTrips
-            case .loading: ProgressView().frame(maxWidth: .infinity).accessibilityLabel("Loading trips")
-            case .recoverableError:
-                ContentUnavailableView("Trips are unavailable", systemImage: NexusIconName.warning.systemName, description: Text(state.error ?? "We could not access your saved session."))
-                NexusSecondaryButton("Retry", fillsWidth: true, action: onRetry)
-            case .authenticated:
-                Picker(
-                    "Trip section",
-                    selection: Binding(
-                        get: { state.selectedGroup },
-                        set: { group in onSelect(group) }
-                    )
-                ) {
-                    ForEach(TripGroup.allCases, id: \.self) { Text($0.label).tag($0) }
+        GeometryReader { geometry in
+            let spacing = NexusAdaptiveSpacing(
+                screenWidth: geometry.size.width,
+                screenHeight: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            )
+            let top = spacing?.screenTopPadding ?? NexusSpacing.space24
+            let bottom = spacing?.contentBottomPaddingWithCta ?? NexusLayout.defaultContentBottomPaddingWithCta
+            let margin = spacing?.screenMargin ?? NexusLayout.screenMargin
+            ScrollView {
+                Group {
+                    if state.access == .guest {
+                        guestPage(minHeight: max(0, geometry.size.height - top - bottom))
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: NexusSpacing.space24) {
+                            heading
+                            switch state.access {
+                            case .guest, .loading: EmptyView()
+                            case .recoverableError: feedback
+                            case .authenticated: tripList(width: geometry.size.width - margin - margin)
+                            }
+                        }
+                    }
                 }
-                .pickerStyle(.segmented)
-                .id("trips.group")
-                if state.offline {
-                    NexusBanner(text: state.lastUpdated.map {
-                        "Offline. Last updated \($0.formatted(date: .abbreviated, time: .shortened)). Status may have changed."
-                    } ?? "Offline. Showing saved trip status; it may have changed.", status: .offline, trailingAction: {
-                        Button("Try again", action: onRetry)
-                            .nexusTextStyle(NexusText.styles.link)
-                            .foregroundStyle(NexusSemanticColors.actionPrimaryText)
-                            .frame(minHeight: NexusLayout.touchMin)
-                    })
-                }
-                if let error = state.error {
-                    NexusBanner(text: error, status: .error, trailingAction: {
-                        NexusTextButton("Try again", action: onRetry)
-                    })
-                }
-                if state.loading { ProgressView().frame(maxWidth: .infinity).accessibilityLabel("Loading trips") }
-                else if state.visibleTrips.isEmpty { ContentUnavailableView("No trips in this section.", systemImage: NexusIconName.flight.systemName) }
-                else { ForEach(state.visibleTrips, id: \.id) { trip in TripCard(trip: trip, onOpen: { onOpen(trip.id) }, onPrimary: { if trip.canUploadReceipt { onUpload(trip.id) } else { onOpen(trip.id) } }).id("trips.trip.\(trip.id)") } }
+                .padding(.horizontal, margin)
+                .padding(.top, top)
+                .padding(.bottom, bottom)
             }
-        }.padding(NexusSpacing.space24).scrollTargetLayout() }
-            .scrollPosition(id: $rootScrollTarget, anchor: .top)
+            .scrollBounceBehavior(.always, axes: .vertical)
+            .scrollIndicators(.hidden)
+            .clipped()
             .accessibilityIdentifier("root-trips")
-            .background(NexusSemanticColors.backgroundPage)
-            .navigationBarHidden(true)
+            .overlay {
+                if state.loading && state.trips.isEmpty {
+                    ProgressView()
+                        .tint(NexusSemanticColors.brandPrimary)
+                        .accessibilityLabel("Loading trips")
+                }
+            }
+        }
+        .background(NexusSemanticColors.backgroundPage.ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var heading: some View {
+        Text("Trips")
+            .nexusTextStyle(NexusText.styles.screenTitle)
+            .foregroundStyle(NexusSemanticColors.textHeading)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func guestPage(minHeight: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: NexusSpacing.space0) {
+            heading
+                .padding(.bottom, NexusSpacing.space32)
+            Spacer(minLength: NexusSpacing.space0)
+            guestTrips
+            Spacer(minLength: NexusSpacing.space24)
+            Spacer(minLength: NexusSpacing.space0)
+        }
+        .frame(minHeight: minHeight, alignment: .topLeading)
+    }
+
+    private func tripList(width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: NexusSpacing.space24) {
+            tabs
+            if state.offline {
+                VStack(alignment: .leading, spacing: NexusSpacing.space8) {
+                    NexusInlineStatusBanner(
+                        text: "Offline. Saved trip status may have changed.",
+                        status: .offline,
+                        onRetry: onRetry
+                    )
+                    if let lastUpdated = state.lastUpdated {
+                        Text("Last updated \(lastUpdated.formatted(date: .abbreviated, time: .shortened))")
+                            .nexusTextStyle(NexusText.styles.bodySmall)
+                            .foregroundStyle(NexusSemanticColors.textSecondary)
+                    }
+                }
+            } else if state.error != nil {
+                feedback
+            }
+
+            if !state.loading, state.visibleTrips.isEmpty, state.error == nil {
+                Text(state.selectedView == .active
+                     ? "No active trips. Your next booking will appear here."
+                     : "No trip history yet.")
+                    .nexusTextStyle(NexusText.styles.body)
+                    .foregroundStyle(NexusSemanticColors.textSecondary)
+            }
+
+            ForEach(state.sections, id: \.self) { section in
+                let trips = state.visibleTrips.filter { $0.listSection == section }
+                if !trips.isEmpty {
+                    LazyVStack(alignment: .leading, spacing: NexusSpacing.space0) {
+                        if let title = section.title {
+                            Text(title)
+                                .nexusTextStyle(NexusText.styles.sectionTitleSmall)
+                                .foregroundStyle(NexusSemanticColors.textHeading)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        ForEach(trips, id: \.id) { trip in
+                            TripSummaryRow(trip: trip, narrow: width < NexusLayout.tripNarrowWidth) { onOpen(trip.id) }
+                            Rectangle()
+                                .fill(NexusSemanticColors.borderSubtle)
+                                .frame(height: NexusBorder.hairline)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+            }
+
+            if state.nextCursor != nil {
+                NexusTextButton(
+                    state.loadingMore ? "Loading more…" : "Load more trips",
+                    isEnabled: !state.loadingMore && !state.offline && !state.refreshing,
+                    action: onLoadMore
+                )
+            }
+        }
+    }
+
+    private var tabs: some View {
+        HStack(spacing: NexusSpacing.space0) {
+            ForEach(TripView.allCases, id: \.self) { view in
+                let selected = state.selectedView == view
+                Button {
+                    onSelect(view)
+                } label: {
+                    Text(view.title)
+                        .nexusTextStyle(NexusText.styles.body)
+                        .foregroundStyle(selected ? NexusSemanticColors.brandPrimary : NexusSemanticColors.textSecondary)
+                        .padding(.vertical, NexusSpacing.space8)
+                        .frame(maxWidth: .infinity, minHeight: NexusLayout.touchRecommended)
+                        .contentShape(Rectangle())
+                        .overlay(alignment: .bottom) {
+                            if selected {
+                                Rectangle()
+                                    .fill(NexusSemanticColors.brandPrimary)
+                                    .frame(height: NexusLayout.tripTabIndicatorHeight)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+    }
+
+    private var feedback: some View {
+        NexusFeedbackPanel(
+            title: "Trips couldn’t refresh",
+            message: state.error ?? "Try again to load trips.",
+            primaryActionLabel: "Try again",
+            onPrimaryAction: onRetry
+        )
     }
 
     private var guestTrips: some View {
-        VStack(alignment: .leading, spacing: NexusSpacing.space16) {
+        VStack(alignment: .leading, spacing: NexusSpacing.space0) {
             NexusIcon(name: .trips, size: NexusIconSize.xl)
                 .foregroundStyle(NexusSemanticColors.brandPrimary)
-            Text("No trips yet")
+                .accessibilityHidden(true)
+                .padding(.bottom, NexusSpacing.space24)
+            Text("Your trips, in one place")
                 .nexusTextStyle(NexusText.styles.sectionTitle)
+                .foregroundStyle(NexusSemanticColors.textHeading)
                 .accessibilityAddTraits(.isHeader)
-            Text("Sign in to see bookings, tickets, and trip updates.")
+                .padding(.bottom, NexusSpacing.space8)
+            Text("Sign in to see your bookings, tickets and trip updates.")
                 .nexusTextStyle(NexusText.styles.body)
                 .foregroundStyle(NexusSemanticColors.textSecondary)
-            NexusTextButton("Sign in to view trips", action: onSignIn)
+                .padding(.bottom, NexusSpacing.space24)
+            NexusPrimaryButton(
+                "Sign in",
+                minWidth: NexusLayout.compactActionMinWidth,
+                minHeight: NexusLayout.contextualButtonHeight,
+                cornerRadius: NexusRadius.contextualButton,
+                action: onSignIn
+            )
+            .accessibilityIdentifier("trips-sign-in")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, NexusSpacing.space64)
-        .id("trips.guest")
+    }
+}
+
+private struct TripSummaryRow: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    let trip: CustomerTrip
+    let narrow: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .trailing, spacing: NexusSpacing.space12) {
+                HStack(spacing: NexusSpacing.space12) {
+                    logo
+                    VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+                        Text(trip.summary?.route.label ?? trip.itineraryLabel)
+                            .nexusTextStyle(NexusText.styles.listTitleLarge)
+                            .foregroundStyle(NexusSemanticColors.textHeading)
+                        secondary(trip.summary?.dateLabel ?? "Departure date unavailable")
+                        secondary(airlineLabel)
+                        if trip.summary?.showsDeadline == true, let deadline = trip.bookingDeadlineLabel {
+                            secondary("Booking deadline: \(deadline)")
+                        }
+                        if !usesFooter { status }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    NexusIcon(name: .chevronRight, size: NexusIconSize.md)
+                        .foregroundStyle(NexusSemanticColors.textSecondary)
+                        .accessibilityHidden(true)
+                }
+                if usesFooter { status }
+            }
+            .padding(.vertical, NexusSpacing.space20)
+            .frame(minHeight: NexusLayout.touchRecommended)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("View trip details")
     }
 
-}
-private struct TripCard: View {
-    let trip: CustomerTrip; let onOpen, onPrimary: () -> Void
-    var body: some View { VStack(alignment: .leading, spacing: NexusSpacing.space12) {
-        HStack { NexusStatusChip(text: trip.group.label, status: trip.group == .actionRequired ? .warning : .success); Spacer(); Text("Ref \(trip.id.prefix(8).uppercased())").nexusTextStyle(NexusText.styles.caption) }
-        Text(trip.itineraryLabel).nexusTextStyle(NexusText.styles.flightTime)
-        if !trip.seats.isEmpty { Text("Seat \(trip.seats.map(\.seatNumber).joined(separator: ", "))").nexusTextStyle(NexusText.styles.bodySmall) }
-        HStack { Text(trip.bookingStatusLabel); Spacer(); if let amount = trip.amountMinor { Text("\(trip.currency ?? "") \(amount / 100)").foregroundStyle(NexusSemanticColors.brandPrimary) } }
-        .nexusTextStyle(NexusText.styles.label)
-        Text(trip.uiState.notice)
+    private var usesFooter: Bool { narrow || textSize >= .xxxLarge }
+
+    private var airlineLabel: String {
+        guard let label = trip.summary?.carrierLabel, !label.isEmpty else { return "Airline unavailable" }
+        return label
+    }
+
+    private var logo: some View {
+        AirlineLogoBadge(
+            code: trip.summary?.carrier,
+            name: trip.summary?.airline,
+            url: trip.summary?.logoURL,
+            width: NexusLayout.tripLogoWidth,
+            height: NexusLayout.tripLogoHeight
+        )
+    }
+
+    private var status: some View {
+        VStack(alignment: .trailing, spacing: NexusSpacing.space4) {
+            Text(trip.summary?.statusLabel ?? "Status unavailable")
+                .nexusTextStyle(NexusText.styles.tripStatus)
+                .foregroundStyle(statusColor)
+            if trip.summary?.showsVerifiedPayment == true {
+                secondary("Payment verified")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .multilineTextAlignment(.trailing)
+    }
+
+    private var statusColor: Color {
+        if trip.listSection == .attention { return NexusSemanticColors.warningText }
+        if trip.summary?.presentation?.state == "TICKET_READY" { return NexusSemanticColors.successText }
+        return NexusSemanticColors.textPrimary
+    }
+
+    private func secondary(_ value: String) -> some View {
+        Text(value)
             .nexusTextStyle(NexusText.styles.bodySmall)
             .foregroundStyle(NexusSemanticColors.textSecondary)
-        ViewThatFits(in: .horizontal) {
-            HStack { NexusSecondaryButton("View details", action: onOpen); Spacer(); NexusPrimaryButton(trip.canUploadReceipt ? "Upload receipt" : "View status", action: onPrimary) }
-            VStack { NexusSecondaryButton("View details", fillsWidth: true, action: onOpen); NexusPrimaryButton(trip.canUploadReceipt ? "Upload receipt" : "View status", fillsWidth: true, action: onPrimary) }
-        }
-    }.padding(NexusSpacing.space20).background(NexusSemanticColors.surfaceBase).clipShape(RoundedRectangle(cornerRadius: NexusRadius.xl)).overlay(RoundedRectangle(cornerRadius: NexusRadius.xl).stroke(NexusSemanticColors.borderDefault)) }
+    }
 }
 
 struct TripDetailScreenRoute: View {

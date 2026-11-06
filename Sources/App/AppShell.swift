@@ -4,7 +4,6 @@ struct AppShell: View {
     @Bindable var router: Router
     @State private var homeRootScrollTarget: String?
     @State private var exploreRootScrollTarget: String?
-    @State private var tripsRootScrollTarget: String?
     @State private var profileRootScrollTarget: String?
     @State private var freshSearchTask: Task<Void, Never>?
     let homeViewModel: HomeViewModel
@@ -106,7 +105,7 @@ struct AppShell: View {
 
     private var tripsStack: some View {
         navigationStack(path: $router.tripsPath) {
-            TripsScreenRoute(viewModel: tripsViewModel, router: router, rootScrollTarget: $tripsRootScrollTarget)
+            TripsScreenRoute(viewModel: tripsViewModel, router: router)
         }
     }
 

@@ -7,7 +7,9 @@ struct NexusPrimaryButton<LeadingIcon: View>: View {
     private let isLoading: Bool
     private let loadingTitle: String?
     private let fillsWidth: Bool
+    private let minWidth: CGFloat?
     private let minHeight: CGFloat
+    private let cornerRadius: CGFloat
     private let action: () -> Void
     private let leadingIcon: () -> LeadingIcon
 
@@ -18,7 +20,9 @@ struct NexusPrimaryButton<LeadingIcon: View>: View {
         isLoading: Bool = false,
         loadingTitle: String? = nil,
         fillsWidth: Bool = false,
+        minWidth: CGFloat? = nil,
         minHeight: CGFloat = NexusLayout.buttonHeight,
+        cornerRadius: CGFloat = NexusRadius.md,
         action: @escaping () -> Void,
         @ViewBuilder leadingIcon: @escaping () -> LeadingIcon
     ) {
@@ -27,7 +31,9 @@ struct NexusPrimaryButton<LeadingIcon: View>: View {
         self.isLoading = isLoading
         self.loadingTitle = loadingTitle
         self.fillsWidth = fillsWidth
+        self.minWidth = minWidth
         self.minHeight = minHeight
+        self.cornerRadius = cornerRadius
         self.action = action
         self.leadingIcon = leadingIcon
     }
@@ -56,10 +62,10 @@ struct NexusPrimaryButton<LeadingIcon: View>: View {
             }
             .padding(.horizontal, NexusSpacing.space16)
             .padding(.vertical, NexusSpacing.space12)
-            .frame(minHeight: minHeight)
+            .frame(minWidth: minWidth, minHeight: minHeight)
             .frame(maxWidth: fillsWidth ? .infinity : nil)
         }
-        .buttonStyle(NexusPrimaryButtonStyle())
+        .buttonStyle(NexusPrimaryButtonStyle(cornerRadius: cornerRadius))
         .disabled(!isEnabled || isLoading)
         .accessibilityLabel(Text(title))
         .accessibilityValue(isLoading ? Text("In progress") : Text(""))
@@ -74,7 +80,9 @@ extension NexusPrimaryButton where LeadingIcon == EmptyView {
         isLoading: Bool = false,
         loadingTitle: String? = nil,
         fillsWidth: Bool = false,
+        minWidth: CGFloat? = nil,
         minHeight: CGFloat = NexusLayout.buttonHeight,
+        cornerRadius: CGFloat = NexusRadius.md,
         action: @escaping () -> Void
     ) {
         self.title = title
@@ -82,7 +90,9 @@ extension NexusPrimaryButton where LeadingIcon == EmptyView {
         self.isLoading = isLoading
         self.loadingTitle = loadingTitle
         self.fillsWidth = fillsWidth
+        self.minWidth = minWidth
         self.minHeight = minHeight
+        self.cornerRadius = cornerRadius
         self.action = action
         leadingIcon = EmptyView.init
     }
@@ -152,6 +162,7 @@ extension NexusSecondaryButton where LeadingIcon == EmptyView {
 }
 
 private struct NexusPrimaryButtonStyle: ButtonStyle {
+    let cornerRadius: CGFloat
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -169,8 +180,8 @@ private struct NexusPrimaryButtonStyle: ButtonStyle {
                         : NexusSemanticColors.actionPrimary
                     : NexusSemanticColors.disabledBg
             )
-            .clipShape(RoundedRectangle(cornerRadius: NexusRadius.md))
-            .scaleEffect(configuration.isPressed && isEnabled && !reduceMotion ? 0.97 : 1)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .scaleEffect(configuration.isPressed && isEnabled && !reduceMotion ? NexusMotion.buttonPressedScale : 1)
             .animation(.easeOut(duration: NexusMotion.durationFastSeconds), value: configuration.isPressed)
     }
 }
