@@ -83,6 +83,40 @@ struct SearchResultsViewModelTests {
         #expect(model.uiState.visibleFlights.map(\.id) == ["direct", "one"])
     }
 
+    @Test func advancedFiltersApplyTogetherAndClearAtomically() async throws {
+        let model = makeModel(result: .success(querySummary: try summary(), offers: [
+            try offer(id: "match", price: 200, departure: "09:00", duration: 120, currency: "ETB"),
+            try offer(id: "expensive", price: 400, departure: "09:00", duration: 120, currency: "ETB"),
+            try offer(id: "wrong-airline", price: 200, departure: "09:00", duration: 120, currency: "ETB", airline: "EK"),
+            try offer(id: "wrong-currency", price: 100, departure: "09:00", duration: 120),
+            try offer(id: "late", price: 200, departure: "12:00", duration: 120, currency: "ETB"),
+            try offer(id: "long", price: 200, departure: "09:00", duration: 121, currency: "ETB")
+        ]))
+        try await model.loadResults()
+
+        await model.onEvent(.filtersApplied([], ["ET"], .init(
+            maximumPriceMinor: 250, departureWindow: .morning,
+            arrivalWindow: .afternoon, maximumDurationMinutes: 120
+        )))
+
+        #expect(model.uiState.hasFilters)
+        #expect(model.uiState.visibleFlights.map(\.id) == ["match"])
+        await model.onEvent(.clearFiltersClicked)
+        #expect(!model.uiState.hasFilters)
+        #expect(model.uiState.visibleFlights.count == 6)
+    }
+
+    @Test func advancedFilterInputsRejectInvalidAndOverflowingValues() {
+        #expect(SearchFilterOptions.priceMinor("12.34") == 1234)
+        #expect(SearchFilterOptions.priceMinor("0.01") == 1)
+        #expect(SearchFilterOptions.priceMinor("0") == nil)
+        #expect(SearchFilterOptions.priceMinor("1.234") == nil)
+        #expect(SearchFilterOptions.priceMinor("999999999999999999999") == nil)
+        #expect(SearchFilterOptions.durationMinutes("2") == 120)
+        #expect(SearchFilterOptions.durationMinutes("2.5") == nil)
+        #expect(SearchFilterOptions.durationMinutes(String(Int.max)) == nil)
+    }
+
     @Test func addingBestPriceChangesSortRemovingItDoesNot() async throws {
         let model = makeModel(result: .success(querySummary: try summary(), offers: [try offer()]))
         try await model.loadResults()
@@ -196,7 +230,9 @@ struct SearchResultsViewModelTests {
         price: Int = 200,
         departure: String = "09:00",
         duration: Int = 120,
-        stops: Int = 0
+        stops: Int = 0,
+        currency: String = "USD",
+        airline: String = "ET"
     ) throws -> FlightOffer {
         let departureTime = try #require(LocalTime(hhmm: departure))
         let arrivalTime = try #require(LocalTime(hhmm: "14:00"))
@@ -206,8 +242,8 @@ struct SearchResultsViewModelTests {
         let reference = FlightOfferReference(searchId: "search", offerId: id, offerToken: "token-\(id)",
             provider: .travelportGds, contentSource: "GDS", responseId: "response", productIds: ["product"],
             termsAndConditionsId: "terms", brandRef: "brand", expiresAt: Date(timeIntervalSince1970: 1_800_000_000))
-        return FlightOffer(id: id, reference: reference, airline: AirlineBrand(code: "ET", name: "Ethiopian Airlines"),
-            flightNumber: "ET600", outbound: leg, inbound: nil, price: Money(amount: price, currency: "USD", formatted: "USD \(price)"),
+        return FlightOffer(id: id, reference: reference, airline: AirlineBrand(code: airline, name: airline),
+            flightNumber: "ET600", outbound: leg, inbound: nil, price: Money(amount: price, currency: currency, formatted: "\(currency) \(price)"),
             oldPrice: Money(amount: price + 50, currency: "USD", formatted: "USD \(price + 50)"), seatsLeft: 3,
             badge: .bestValue, refundable: true)
     }
