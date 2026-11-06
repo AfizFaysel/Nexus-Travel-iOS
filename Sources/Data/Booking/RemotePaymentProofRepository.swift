@@ -34,6 +34,27 @@ struct RemotePaymentProofRepository: PaymentProofRepository {
         }
     }
 
+    func submitLink(bookingId: String, url: String) async throws -> PaymentProofUploadResult {
+        do {
+            guard let token = try await tokenProvider.accessToken() else { return .authRequired }
+            let response = try await transport.send(HTTPRequest(
+                target: .mobile("bookings/\(bookingId)/payment-proof-link"), method: .post,
+                body: try JSONEncoder().encode(["url": url]), authorization: .bearer(token)
+            ))
+            guard response.statusCode != 401 else { return .authRequired }
+            guard (200..<300).contains(response.statusCode),
+                  let proof = try? JSONDecoder().decode(PaymentProofCompletedDTO.self, from: response.data),
+                  !proof.id.isEmpty else { return .failed }
+            return .success
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch HTTPTransportError.networkUnavailable, HTTPTransportError.timedOut {
+            return .networkUnavailable
+        } catch {
+            return .failed
+        }
+    }
+
     func upload(bookingId: String, document: PaymentProofAttachment) async throws -> PaymentProofUploadResult {
         guard let contentType = document.mimeType?.split(separator: ";").first.map(String.init)?.lowercased(),
               Self.allowedTypes.contains(contentType), let url = URL(string: document.uriString), url.isFileURL else {

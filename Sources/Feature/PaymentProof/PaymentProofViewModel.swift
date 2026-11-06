@@ -1,11 +1,22 @@
+import Foundation
 import Observation
+
+enum ReceiptMethod: Hashable { case file, link }
 
 struct PaymentProofUiState: Equatable, Sendable {
     var selected: PaymentProofAttachment?; var uploading = false; var uploaded = false; var message: String?
     var canRetry = false
     var checkingStatus = false; var canUploadProof = false
+    var receiptMethod = ReceiptMethod.file
+    var link = ""
+    var linkError: String?
     var instructions: PaymentInstructions?
     var selectedAccountId: String?
+
+    var canSubmit: Bool {
+        canUploadProof && !uploading && !uploaded && (receiptMethod == .file
+            ? selected != nil : !link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 
     var selectedAccount: ReceivingPaymentAccount? {
         instructions?.accounts.first { $0.id == selectedAccountId }
@@ -76,21 +87,64 @@ final class PaymentProofViewModel {
         state.selected = attachment; state.uploaded = false; state.canRetry = false
         if state.canUploadProof { state.message = nil }
     }
+    func selectMethod(_ method: ReceiptMethod) {
+        guard !state.uploading else { return }
+        state.receiptMethod = method
+        state.canRetry = false
+        state.linkError = nil
+        if state.canUploadProof { state.message = nil }
+    }
+
+    func updateLink(_ link: String) {
+        guard !state.uploading else { return }
+        state.link = link
+        state.linkError = nil
+        state.canRetry = false
+        if state.canUploadProof { state.message = nil }
+    }
+
+    func submit() async throws {
+        guard state.canSubmit else { return }
+        switch state.receiptMethod {
+        case .file:
+            try await upload()
+        case .link:
+            let link = state.link.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard link.utf16.count <= 2048,
+                  let url = URLComponents(string: link), url.scheme?.lowercased() == "https",
+                  let host = url.host, !host.isEmpty, url.user == nil, url.password == nil else {
+                state.linkError = "Enter a valid HTTPS link."
+                return
+            }
+            try await submitProof(successMessage: "Receipt link submitted.") {
+                try await repository.submitLink(bookingId: bookingId, url: link)
+            }
+        }
+    }
+
     func upload() async throws {
-        guard !state.uploading, state.canUploadProof, let document = state.selected else { return }
+        guard let document = state.selected else { return }
+        try await submitProof(successMessage: "Receipt uploaded.") {
+            try await repository.upload(bookingId: bookingId, document: document)
+        }
+    }
+
+    private func submitProof(successMessage: String, operation: () async throws -> PaymentProofUploadResult) async throws {
+        guard !state.uploading, !state.uploaded, state.canUploadProof else { return }
         state.uploading = true; state.message = nil; state.canRetry = false
         do {
             try await verifyStatus()
             try Task.checkCancellation()
             guard state.canUploadProof else { state.uploading = false; return }
-            let result = try await repository.upload(bookingId: bookingId, document: document)
+            let result = try await operation()
+            try Task.checkCancellation()
             state.uploading = false
             switch result {
-            case .success: state.uploaded = true; state.message = "Receipt uploaded."
+            case .success: state.uploaded = true; state.message = successMessage
             case .invalidDocument: state.message = "Use PDF, JPG, or PNG up to 10 MB."
-            case .authRequired: state.message = "Sign in again to upload payment receipt."
-            case .networkUnavailable: state.message = "Connection lost. Retry upload."; state.canRetry = true
-            case .failed: state.message = "Could not upload receipt. Retry."; state.canRetry = true
+            case .authRequired: state.message = "Sign in again to submit your receipt."
+            case .networkUnavailable: state.message = "Connection lost. Try submitting again."; state.canRetry = true
+            case .failed: state.message = "Could not submit receipt. Try again."; state.canRetry = true
             }
         } catch is CancellationError { state.uploading = false; throw CancellationError() }
         catch {
