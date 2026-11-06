@@ -4,6 +4,12 @@ struct PaymentProofUiState: Equatable, Sendable {
     var selected: PaymentProofAttachment?; var uploading = false; var uploaded = false; var message: String?
     var canRetry = false
     var checkingStatus = false; var canUploadProof = false
+    var instructions: PaymentInstructions?
+    var selectedAccountId: String?
+
+    var selectedAccount: ReceivingPaymentAccount? {
+        instructions?.accounts.first { $0.id == selectedAccountId }
+    }
 }
 @MainActor @Observable
 final class PaymentProofViewModel {
@@ -17,14 +23,21 @@ final class PaymentProofViewModel {
     func verifyStatus() async throws {
         guard !state.checkingStatus else { return }
         state.checkingStatus = true; state.canUploadProof = false
+        state.instructions = nil
+        state.message = nil
         defer { state.checkingStatus = false }
         do {
             let result = try await statusCheck(bookingId)
             try Task.checkCancellation()
             switch result {
             case let .success(snapshot):
-                state.canUploadProof = snapshot.outcome == .held && snapshot.bookingReference != nil
-                state.message = state.canUploadProof ? nil : "Do not pay or upload a receipt yet. Check your trip for the current booking status."
+                guard snapshot.outcome == .held, snapshot.bookingReference != nil else {
+                    state.message = "Do not pay or upload a receipt yet. Check your trip for the current booking status."
+                    return
+                }
+                let instructionsResult = try await repository.instructions(bookingId: bookingId)
+                try Task.checkCancellation()
+                applyInstructions(instructionsResult)
             case .networkUnavailable:
                 state.message = "Offline. Booking status may have changed. Check again before paying."
             case .notFound, .unknownError:
@@ -33,6 +46,32 @@ final class PaymentProofViewModel {
         } catch is CancellationError { throw CancellationError() }
         catch { state.message = "Could not confirm the airline hold. Check status before paying." }
     }
+    private func applyInstructions(_ result: PaymentInstructionsResult) {
+        switch result {
+        case let .available(instructions):
+            guard instructions.canSubmitProof else {
+                state.message = "Payment is not available for this booking. Return to Trips for the latest status."
+                return
+            }
+            state.instructions = instructions
+            state.canUploadProof = true
+            if state.selectedAccount == nil { state.selectedAccountId = instructions.accounts.first?.id }
+        case .offline:
+            state.message = "Connect to the internet to confirm payment details before transferring money."
+        case .authRequired:
+            state.message = "Sign in again to view payment details."
+        case .unavailable:
+            state.message = "This booking is unavailable. Return to Trips."
+        case .failed:
+            state.message = "We couldn't load current payment details. Try again before transferring money."
+        }
+    }
+
+    func selectAccount(_ id: String) {
+        guard state.instructions?.accounts.contains(where: { $0.id == id }) == true else { return }
+        state.selectedAccountId = id
+    }
+
     func select(_ attachment: PaymentProofAttachment) {
         state.selected = attachment; state.uploaded = false; state.canRetry = false
         if state.canUploadProof { state.message = nil }

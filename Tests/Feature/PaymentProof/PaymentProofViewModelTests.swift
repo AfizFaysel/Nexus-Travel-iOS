@@ -66,8 +66,19 @@ private func heldBookingStatus(_ bookingId: String) async throws -> BookingStatu
 }
 private actor PaymentProofFakeRepository: PaymentProofRepository {
     let result: PaymentProofUploadResult
+    let currentInstructions: PaymentInstructions
     private(set) var uploadCount = 0
-    init(result: PaymentProofUploadResult) { self.result = result }
+
+    init(result: PaymentProofUploadResult, instructions: PaymentInstructions = .init(
+        canSubmitProof: true, amountMinor: 100, currency: "ETB", paymentReason: nil, deadline: nil, accounts: []
+    )) {
+        self.result = result
+        currentInstructions = instructions
+    }
+
+    func instructions(bookingId: String) async throws -> PaymentInstructionsResult {
+        .available(currentInstructions)
+    }
     func upload(bookingId: String, document: PaymentProofAttachment) async throws -> PaymentProofUploadResult {
         uploadCount += 1
         return result
