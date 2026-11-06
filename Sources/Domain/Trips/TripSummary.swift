@@ -2,13 +2,16 @@ import Foundation
 
 struct TripSummary: Equatable, Sendable {
     struct Progress: Decodable, Equatable, Sendable {
+        let booking: String?
         let payment: String
+        let ticket: String?
     }
 
     struct Presentation: Decodable, Equatable, Sendable {
         let state: String
         let section: TripSection
         let primaryAction: String?
+        let allowedActions: Set<String>?
         let progress: Progress
     }
 
@@ -24,6 +27,8 @@ struct TripSummary: Equatable, Sendable {
 
     struct Verification: Decodable, Equatable, Sendable {
         let status: String
+        let reason: String?
+        let updatedAt: String?
     }
 
     let presentation: Presentation?
@@ -85,7 +90,7 @@ struct TripSummary: Equatable, Sendable {
         presentation?.state == "PAID_NEEDS_ATTENTION" && presentation?.progress.payment == "COMPLETE"
     }
 
-    private static func dateLabel(_ value: String) -> String? {
+    static func dateLabel(_ value: String) -> String? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = .gmt

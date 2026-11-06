@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 
 struct TripsScreenRoute: View {
@@ -299,6 +298,7 @@ private struct TripSummaryRow: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint("View trip details")
+        .accessibilityIdentifier("trip-\(trip.id)")
     }
 
     private var usesFooter: Bool { narrow || textSize >= .xxxLarge }
@@ -342,62 +342,4 @@ private struct TripSummaryRow: View {
             .nexusTextStyle(NexusText.styles.bodySmall)
             .foregroundStyle(NexusSemanticColors.textSecondary)
     }
-}
-
-struct TripDetailScreenRoute: View {
-    @State private var viewModel: TripDetailViewModel; let router: Router; let onUploadPaymentProof: (String) -> Void
-    @State private var previewURL: URL?
-    init(viewModel: TripDetailViewModel, router: Router, onUploadPaymentProof: @escaping (String) -> Void) { _viewModel = State(initialValue: viewModel); self.router = router; self.onUploadPaymentProof = onUploadPaymentProof }
-    var body: some View {
-        TripDetailScreen(state: viewModel.state, onRefresh: { Task { try? await viewModel.load(forceRefresh: true) } }, onTicket: { Task { try? await viewModel.downloadTicket() } }, onUpload: { onUploadPaymentProof(viewModel.state.trip?.id ?? "") })
-            .navigationTitle("Trip details").navigationBarTitleDisplayMode(.inline).task { try? await viewModel.load() }
-            .onChange(of: viewModel.state.ticketToOpen) { _, value in previewURL = value; if value != nil { viewModel.ticketOpened() } }
-            .quickLookPreview($previewURL)
-    }
-}
-private struct TripDetailScreen: View {
-    let state: TripDetailUiState; let onRefresh, onTicket, onUpload: () -> Void
-    var body: some View { Group {
-        if state.loading { ProgressView().accessibilityLabel("Loading trip") }
-        else if let trip = state.trip { ScrollView { VStack(alignment: .leading, spacing: NexusSpacing.space16) {
-            Text(trip.itineraryLabel).nexusTextStyle(NexusText.styles.screenTitle); Text("Ref \(trip.id.prefix(8).uppercased())").nexusTextStyle(NexusText.styles.bodySmall)
-            NexusBanner(text: state.notice, status: noticeStatus(trip))
-            if ["HOLD_UNCONFIRMED", "HOLD_CHANGE_REVIEW"].contains(trip.status) {
-                SupportOptionsView(bookingId: trip.id)
-            }
-            if let error = state.error {
-                NexusFeedbackPanel(title: "Trip details need attention", message: error)
-            }
-            detailCard("Status") { HStack { NexusStatusChip(text: trip.bookingStatusLabel, status: noticeStatus(trip)); Spacer(); Text(paymentLabel(trip)).nexusTextStyle(NexusText.styles.label) } }
-            if !trip.segments.isEmpty { detailCard("Flights") { ForEach(Array(trip.segments.enumerated()), id: \.offset) { _, segment in VStack(alignment: .leading) { Text(segment.flightLabel).nexusTextStyle(NexusText.styles.label); Text([segment.origin, segment.destination].compactMap { $0 }.joined(separator: " to ")).nexusTextStyle(NexusText.styles.bodySmall) } } } }
-            if !trip.seats.isEmpty { detailCard("Seats") { ForEach(Array(trip.seats.enumerated()), id: \.offset) { _, seat in Text("Seat \(seat.seatNumber)") } } }
-            if !trip.tickets.isEmpty { detailCard("Tickets") { ForEach(Array(trip.tickets.enumerated()), id: \.offset) { _, ticket in Text(ticket.ticketNumber ?? "Ticket issued") } } }
-            if let primary = state.primaryActionLabel { NexusPrimaryButton(primary, isLoading: state.downloadingTicket || state.refreshing, fillsWidth: true, action: action(primary)) }
-            if let secondary = state.secondaryActionLabel { NexusSecondaryButton(secondary, fillsWidth: true, action: onTicket) }
-        }.padding(NexusSpacing.space24) } }
-        else {
-            NexusFeedbackPanel(title: "Could not load trip", message: state.error ?? "Try again to load this trip.",
-                               primaryActionLabel: "Try again", onPrimaryAction: onRefresh)
-                .padding(NexusSpacing.space24)
-        }
-    }.background(NexusSemanticColors.backgroundPage) }
-    private func action(_ label: String) -> () -> Void { switch label { case "View ticket", "Download again": onTicket; case "Upload payment receipt": onUpload; default: onRefresh } }
-    private func detailCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View { VStack(alignment: .leading, spacing: NexusSpacing.space12) { Text(title).nexusTextStyle(NexusText.styles.sectionTitle); content() }.padding(NexusSpacing.space20).frame(maxWidth: .infinity, alignment: .leading).background(NexusSemanticColors.surfaceBase).clipShape(RoundedRectangle(cornerRadius: NexusRadius.xl)) }
-}
-private func humanize(_ value: String) -> String { value.replacingOccurrences(of: "_", with: " ").lowercased().capitalized }
-private func paymentLabel(_ trip: CustomerTrip) -> String {
-    if ["HOLD_UNCONFIRMED", "HOLD_CHANGE_REVIEW", "HOLD_REQUESTED", "HOLDING_WITH_TRAVELPORT"].contains(trip.status) {
-        return "Do not pay yet"
-    }
-    if trip.paymentStatus == "PAID" { return "Verified" }
-    if trip.paymentProofStatus == "UPLOADED" { return "Receipt under review" }
-    if trip.canUploadReceipt { return "Receipt needed" }
-    return humanize(trip.paymentStatus)
-}
-private func noticeStatus(_ trip: CustomerTrip) -> NexusStatus {
-    if trip.status == "TICKETED" && trip.ticketDocumentAvailable { .success }
-    else if trip.status.contains("FAILED") || trip.ticketingStatus.contains("FAILED") { .error }
-    else if ["HOLD_UNCONFIRMED", "HOLD_CHANGE_REVIEW", "HOLD_REQUESTED", "HOLDING_WITH_TRAVELPORT"].contains(trip.status)
-                || trip.status.contains("DELAYED") || trip.ticketingStatus == "DELAYED" { .warning }
-    else { .info }
 }

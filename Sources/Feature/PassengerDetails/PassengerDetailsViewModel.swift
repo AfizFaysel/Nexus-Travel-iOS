@@ -17,19 +17,66 @@ final class PassengerDetailsViewModel {
     private let repository: any PassengerDetailsRepository
     private let today: () -> LocalDate
     private let clientSessionId: String
+    private let bookingId: String?
     private var navigationEvents: [PassengerDetailsNavigationEvent] = []
 
     init(details: FlightDetails, repository: any PassengerDetailsRepository,
-         clientSessionId: String = "ios_\(UUID().uuidString)", today: @escaping () -> LocalDate) {
+         clientSessionId: String = "ios_\(UUID().uuidString)", bookingId: String? = nil,
+         resume: PassengerResumeDraft? = nil, today: @escaping () -> LocalDate) {
         self.details = details; self.repository = repository; self.clientSessionId = clientSessionId; self.today = today
+        self.bookingId = bookingId
         let counts = details.travelers
         let types = Array(repeating: PassengerType.adult, count: max(0, counts.adults))
             + Array(repeating: .child, count: max(0, counts.children))
             + Array(repeating: .infant, count: max(0, counts.infants))
-        let entries = types.isEmpty ? [.adult] : types
+        let entries = resume?.passengers.map(\.passengerType) ?? (types.isEmpty ? [.adult] : types)
         passengerTypes = entries
-        forms = entries.map { _ in PassengerDetailsFormState() }
+        forms = resume.map(Self.restoredForms) ?? entries.map { _ in PassengerDetailsFormState() }
         validations = entries.map { _ in PassengerValidationState() }
+    }
+
+    private static func restoredForms(_ draft: PassengerResumeDraft) -> [PassengerDetailsFormState] {
+        var forms = draft.passengers.map { passenger in
+            let birth = passenger.dateOfBirth
+            let expiry = passenger.passportExpiryDate
+            var form = PassengerDetailsFormState(
+                title: passenger.title, gender: passenger.gender, firstName: passenger.firstName,
+                lastName: passenger.lastName, dateOfBirth: birth,
+                dateOfBirthDay: birth.map { String($0.day) } ?? "",
+                dateOfBirthMonth: birth.map { String($0.month) } ?? "",
+                dateOfBirthYear: birth.map { String($0.year) } ?? "",
+                nationalityCountryCode: passenger.nationalityCountryCode,
+                nationalityLabel: CountryCatalog.byIsoCode(passenger.nationalityCountryCode).nationalityLabel,
+                passportNumber: passenger.passportNumber,
+                passportExpiryDay: expiry.map { String($0.day) } ?? "",
+                passportExpiryMonth: expiry.map { String($0.month) } ?? "",
+                passportExpiryYear: expiry.map { String($0.year) } ?? "",
+                passportExpiryDate: expiry, passportIssuingCountryCode: passenger.passportIssuingCountryCode,
+                passportIssuingCountryLabel: CountryCatalog.byIsoCode(passenger.passportIssuingCountryCode).countryName,
+                isPassportIssuingCountryEthiopia: passenger.passportIssuingCountryCode == CountryCatalog.defaultIsoCode,
+                isNationalityEthiopian: passenger.nationalityCountryCode == CountryCatalog.defaultIsoCode
+            )
+            form.passportUploadId = passenger.passportUploadId
+            return form
+        }
+        if !forms.isEmpty {
+            forms[0].email = draft.email ?? ""
+            if let phone = draft.phone {
+                let country = CountryCatalog.countries.filter { !$0.dialCode.isEmpty && phone.hasPrefix($0.dialCode) }
+                    .max { $0.dialCode.count < $1.dialCode.count }
+                forms[0].countryDialCode = country?.dialCode ?? ""
+                forms[0].phoneNumber = String(phone.dropFirst(country?.dialCode.count ?? 0))
+            }
+        }
+        return forms
+    }
+
+    func updatePassportNumber(_ number: String) {
+        let index = activePassengerIndex
+        if number.trimmingCharacters(in: .whitespacesAndNewlines) != forms[index].passportNumber {
+            forms[index].passportUploadId = nil
+        }
+        forms[index].passportNumber = number
     }
 
     func selectPassenger(_ index: Int) {
@@ -58,12 +105,13 @@ final class PassengerDetailsViewModel {
                                dateOfBirth: form.dateOfBirth, nationalityCountryCode: form.nationalityCountryCode,
                                passportNumber: form.passportNumber.trimmingCharacters(in: .whitespacesAndNewlines),
                                passportExpiryDate: form.passportExpiryDate,
-                               passportIssuingCountryCode: form.passportIssuingCountryCode, document: form.passportDocument)
+                               passportIssuingCountryCode: form.passportIssuingCountryCode, document: form.passportDocument,
+                               passportUploadId: form.passportUploadId)
             },
             contact: .init(email: forms[0].email.trimmingCharacters(in: .whitespacesAndNewlines),
                            countryDialCode: forms[0].countryDialCode,
                            phoneNumber: forms[0].phoneNumber.filter(\.isNumber)),
-            clientSessionId: clientSessionId
+            clientSessionId: clientSessionId, bookingId: bookingId
         )
         switch try await repository.submitPassengerDetails(request) {
         case let .success(reviewId, _): navigationEvents.append(.seats(reviewId))

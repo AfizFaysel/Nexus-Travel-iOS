@@ -102,7 +102,15 @@ enum BookingStatusAction: String, Equatable, Sendable {
     case viewTicket = "VIEW_TICKET"
 }
 
+enum BookingAbandonmentState: String, Sendable {
+    case cancelled = "CANCELLED"
+    case closed = "CLOSED"
+    case cancellationPending = "CANCELLATION_PENDING"
+    case supportReview = "SUPPORT_REVIEW"
+}
+
 struct BookingStatusSnapshot: Equatable, Sendable {
+    let abandonmentState: BookingAbandonmentState?
     let outcome: BookingHoldOutcome
     let bookingReference: String?
     let reconciliationState: BookingReconciliationState
@@ -112,7 +120,9 @@ struct BookingStatusSnapshot: Equatable, Sendable {
     init(outcome: BookingHoldOutcome, bookingReference: String?,
          reconciliationState: BookingReconciliationState = .notNeeded,
          lastSupplierCheckedAt: String? = nil,
-         allowedNextActions: [BookingStatusAction] = []) {
+         allowedNextActions: [BookingStatusAction] = [],
+         abandonmentState: BookingAbandonmentState? = nil) {
+        self.abandonmentState = abandonmentState
         self.outcome = outcome
         self.bookingReference = bookingReference
         self.reconciliationState = reconciliationState
@@ -147,9 +157,14 @@ enum BookingRepriceResult: Equatable, Sendable {
 
 protocol BookingRequestRepository: Sendable {
     func getReview(reviewId: String) async throws -> BookingRequestResult
+    func getPassengerResume(bookingId: String) async throws -> PassengerResumeDraft?
     func getStatus(reviewId: String) async throws -> BookingStatusResult
     func requestStatusCheck(reviewId: String) async throws -> BookingStatusResult
     func reprice(reviewId: String, expectedUpdatedAt: String) async throws -> BookingRepriceResult
     func acceptQuote(reviewId: String, expectedUpdatedAt: String, quoteRevision: String) async throws -> BookingRequestResult
     func submitReview(reviewId: String, idempotencyKey: String) async throws -> BookingSubmitResult
+}
+
+extension BookingRequestRepository {
+    func getPassengerResume(bookingId: String) async throws -> PassengerResumeDraft? { nil }
 }

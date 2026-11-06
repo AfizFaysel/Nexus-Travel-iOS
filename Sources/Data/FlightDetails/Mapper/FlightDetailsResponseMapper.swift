@@ -18,7 +18,7 @@ enum FlightDetailsResponseMapper {
         }
     }
 
-    private static func map(_ dto: FlightDetailsDTO, reference: FlightOfferReference) throws -> FlightDetails {
+    static func map(_ dto: FlightDetailsDTO, reference: FlightOfferReference) throws -> FlightDetails {
         guard let departureDate = LocalDate(iso8601: dto.departureDate),
               let tripType = tripType(dto.tripType),
               let legs = try? dto.legs.map(map) else { throw FlightDetailsMappingError.invalidRequiredData }

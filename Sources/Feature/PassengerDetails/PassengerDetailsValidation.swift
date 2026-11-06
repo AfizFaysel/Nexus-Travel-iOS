@@ -68,7 +68,7 @@ enum PassengerDetailsValidator {
         fieldMessages.append(contentsOf: expiry.fieldMessages)
         if !expiry.groupErrors.isEmpty { groupErrors[.passportExpiry] = expiry.groupErrors }
 
-        if fields.contains(.passportDocument), form.passportDocument == nil {
+        if fields.contains(.passportDocument), form.passportDocument == nil, form.passportUploadId == nil {
             addField(.passportDocument, "Passport document is required.")
         }
         if includeContact, fields.contains(.email), let message = PassengerContactValidator.emailError(form.email) {

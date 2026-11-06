@@ -6,6 +6,7 @@ struct SubmitPassengerDetailsRequest: Equatable, Hashable, Codable, Sendable {
     let passengers: [PassengerDetailsDraft]
     let contact: PassengerContactDetails
     let clientSessionId: String
+    var bookingId: String?
 }
 
 /// Unsubmitted identity and passport details for one passenger.
@@ -21,12 +22,21 @@ struct PassengerDetailsDraft: Equatable, Hashable, Codable, Sendable {
     let passportExpiryDate: LocalDate?
     let passportIssuingCountryCode: String
     let document: PassengerDocumentAttachment?
+    var passportUploadId: String?
 
     /// First and last names joined when each value is nonblank.
     var fullName: String {
         [firstName, lastName].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: " ")
     }
+}
+
+/// Persisted booking information required to resume a passenger draft.
+struct PassengerResumeDraft: Equatable, Sendable {
+    let flightDetails: FlightDetails
+    let passengers: [PassengerDetailsDraft]
+    let email: String?
+    let phone: String?
 }
 
 /// Contact details attached to passenger intake.

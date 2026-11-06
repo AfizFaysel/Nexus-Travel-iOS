@@ -17,7 +17,11 @@ struct RemotePassengerDetailsRepository: PassengerDetailsRepository {
         var uploadIds: [String] = []
         for (index, passenger) in request.passengers.enumerated() {
             guard let document = passenger.document else {
-                return .validationRejected([.init(field: "passportDocument", message: "Passport document required")])
+                guard request.bookingId != nil, let savedUpload = passenger.passportUploadId else {
+                    return .validationRejected([.init(field: "passportDocument", message: "Passport document required")])
+                }
+                uploadIds.append(savedUpload)
+                continue
             }
             switch try await passportUploadRepository.upload(
                 document: document, idempotencyKey: "\(request.clientSessionId):passport:\(index)"
@@ -32,15 +36,21 @@ struct RemotePassengerDetailsRepository: PassengerDetailsRepository {
         }
         do {
             guard let token = try await tokenProvider.accessToken() else { return .authRequired }
-            let draftBody = try JSONEncoder().encode(BookingDraftRequest(
-                searchSessionId: request.offerReference.searchId, offerId: request.offerReference.offerId
-            ))
-            let draftResponse = try await transport.send(HTTPRequest(
-                target: .mobile("bookings/drafts"), method: .post, body: draftBody, authorization: .bearer(token)
-            ))
-            if let mapped = Self.error(for: draftResponse.statusCode) { return mapped }
-            guard let draft = try? JSONDecoder().decode(BookingResponse.self, from: draftResponse.data) else {
-                return .unknownError
+            let bookingId: String
+            if let savedBooking = request.bookingId {
+                bookingId = savedBooking
+            } else {
+                let draftBody = try JSONEncoder().encode(BookingDraftRequest(
+                    searchSessionId: request.offerReference.searchId, offerId: request.offerReference.offerId
+                ))
+                let draftResponse = try await transport.send(HTTPRequest(
+                    target: .mobile("bookings/drafts"), method: .post, body: draftBody, authorization: .bearer(token)
+                ))
+                if let mapped = Self.error(for: draftResponse.statusCode) { return mapped }
+                guard let draft = try? JSONDecoder().decode(BookingResponse.self, from: draftResponse.data) else {
+                    return .unknownError
+                }
+                bookingId = draft.id
             }
             let body = try JSONEncoder().encode(PassengerRequest(
                 contact: .init(email: request.contact.email,
@@ -48,7 +58,7 @@ struct RemotePassengerDetailsRepository: PassengerDetailsRepository {
                 passengers: zip(request.passengers, uploadIds).map(PassengerPayload.init)
             ))
             let readyResponse = try await transport.send(HTTPRequest(
-                target: .mobile("bookings/\(draft.id)/passengers"), method: .patch,
+                target: .mobile("bookings/\(bookingId)/passengers"), method: .patch,
                 body: body, authorization: .bearer(token)
             ))
             if let mapped = Self.error(for: readyResponse.statusCode) { return mapped }

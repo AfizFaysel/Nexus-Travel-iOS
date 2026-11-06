@@ -18,6 +18,7 @@ struct PassengerDetailsFormState: Equatable, Hashable, Sendable {
     var passportIssuingCountryCode: String
     var passportIssuingCountryLabel: String
     var passportDocument: PassengerDocumentAttachment?
+    var passportUploadId: String?
     var email: String
     var countryDialCode: String
     var phoneCountryCode: String

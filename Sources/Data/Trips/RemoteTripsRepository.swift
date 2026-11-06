@@ -73,12 +73,15 @@ struct RemoteTripsRepository: TripsRepository {
     }
 
     func tripDetail(id: String, forceRefresh: Bool) async throws -> TripDetailResult {
-        let key = "trips:detail:\(id)"
+        guard let token = try await tokenProvider.accessToken() else { return .authRequired }
+        let scope = SHA256.hash(data: Data(token.utf8)).description
+        let key = "trips:detail:\(scope):\(id)"
         if !forceRefresh, let entry = await cache.fresh(key: key), let trip = try? Self.decodeTrip(entry.data, offline: false, fetchedAt: entry.fetchedAt) { return .success(trip) }
         do {
-            guard let token = try await tokenProvider.accessToken() else { return .authRequired }
             let response = try await transport.send(HTTPRequest(target: .mobile("trips/\(id)"), authorization: .bearer(token)))
-            if response.statusCode == 401 { return .authRequired }; if response.statusCode == 404 { return .notFound }
+            try Task.checkCancellation()
+            if response.statusCode == 401 { return .authRequired }
+            if response.statusCode == 403 || response.statusCode == 404 { return .notFound }
             guard (200..<300).contains(response.statusCode) else { return .failed }
             let trip = try Self.decodeTrip(response.data, offline: false, fetchedAt: Date()); await cache.put(key: key, data: response.data); return .success(trip)
         } catch is CancellationError { throw CancellationError() }
@@ -98,14 +101,33 @@ struct RemoteTripsRepository: TripsRepository {
         catch HTTPTransportError.networkUnavailable, HTTPTransportError.timedOut { return .networkUnavailable }
         catch { return .unknownError }
     }
-    func cacheTicketPdf(id: String, downloadURL: URL) async throws -> CachedTicketResult {
+    func cachedTicketPdf(id: String, version: String?) async throws -> CachedTicketResult? {
+        guard let token = try await tokenProvider.accessToken() else { return nil }
+        let scope = SHA256.hash(data: Data(token.utf8)).description
+        return ticketStore.cached(id: "\(scope):\(id)", version: version)
+    }
+
+    func cacheTicketPdf(id: String, downloadURL: URL, version: String? = nil) async throws -> CachedTicketResult {
         do {
+            guard let token = try await tokenProvider.accessToken() else { return .unknownError }
             let response = try await transport.send(HTTPRequest(target: .absolute(downloadURL), authorization: .none))
+            try Task.checkCancellation()
             guard response.statusCode == 200 else { return .networkUnavailable }
-            do { return .success(try ticketStore.store(id: id, data: response.data)) } catch { return .storageUnavailable }
-        } catch is CancellationError { throw CancellationError() }
-        catch HTTPTransportError.networkUnavailable, HTTPTransportError.timedOut { return .networkUnavailable }
-        catch { return .unknownError }
+            guard try await tokenProvider.accessToken() == token else { return .unknownError }
+            try Task.checkCancellation()
+            let scope = SHA256.hash(data: Data(token.utf8)).description
+            do {
+                return .success(try ticketStore.store(id: "\(scope):\(id)", version: version, data: response.data))
+            } catch {
+                return .storageUnavailable
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch HTTPTransportError.networkUnavailable, HTTPTransportError.timedOut {
+            return .networkUnavailable
+        } catch {
+            return .unknownError
+        }
     }
     private static func decodePage(_ data: Data, offline: Bool, fetchedAt: Date) throws -> TripPage { let dto = try JSONDecoder().decode(TripPageDTO.self, from: data); return .init(items: dto.items.map { $0.domain(offline: offline, fetchedAt: fetchedAt) }, nextCursor: dto.nextCursor) }
     private static func decodeTrip(_ data: Data, offline: Bool, fetchedAt: Date) throws -> CustomerTrip { try JSONDecoder().decode(TripDTO.self, from: data).domain(offline: offline, fetchedAt: fetchedAt) }
@@ -125,12 +147,22 @@ private struct TripDTO: Decodable {
     let itinerary: [String: JSONValue]?; let normalizedItinerary: [String: JSONValue]?
     let presentation: TripSummary.Presentation?; let paymentVerification: TripSummary.Verification?
     let supplierCheck: TripSupplierCheckDTO?
+    let travelportLocator: String?
+    let travelerCount: Int?
+    let travelers: [TripDetail.Traveler]?
+    let seatReservation: TripSeatReservationDTO?
+    let confirmedChange: TripItineraryChangeDTO?
+    let ticketDocument: TripDetail.TicketDocument?
+    let lastSupplierCheckedAt: String?
+    let ticketEmailStatus: String?
+    let abandonedAt: String?
+    let resumeTarget: String?
     let contractVersion: Int?; let seats: [String: JSONValue]?; let tickets: [TripTicketDTO]?
     func domain(offline: Bool, fetchedAt: Date) -> CustomerTrip {
         let itinerary = normalizedItinerary ?? itinerary
         let origin = itinerary?["departureAirportCode"]?.string ?? itinerary?["origin"]?.string ?? itinerary?["from"]?.string ?? itinerary?["departureAirport"]?.string
         let destination = itinerary?["arrivalAirportCode"]?.string ?? itinerary?["destination"]?.string ?? itinerary?["to"]?.string ?? itinerary?["arrivalAirport"]?.string
-        let segments = itinerary?["segments"]?.array?.compactMap { $0.object }.map { value in TripSegment(origin: value["origin"]?.string ?? value["from"]?.string, destination: value["destination"]?.string ?? value["to"]?.string, departureTime: value["departureTime"]?.string ?? value["departureAt"]?.string, arrivalTime: value["arrivalTime"]?.string ?? value["arrivalAt"]?.string, carrier: value["carrier"]?.string ?? value["carrierCode"]?.string ?? value["airlineCode"]?.string, flightNumber: value["flightNumber"]?.string ?? value["number"]?.string) } ?? []
+        let segments = itinerary?["segments"]?.array?.compactMap { $0.object }.map(Self.segment) ?? []
         let assignments = seats?["assignments"]?.array?.compactMap { $0.object }.compactMap { value -> TripSeatAssignment? in guard let number = value["seatNumber"]?.string else { return nil }; return .init(passengerIndex: value["passengerIndex"]?.int, segmentId: value["segmentId"]?.string, seatNumber: number) } ?? []
         let summary = TripSummary(
             presentation: contractVersion.map { (1...2).contains($0) } == false ? nil : presentation,
@@ -147,10 +179,70 @@ private struct TripDTO: Decodable {
             verification: paymentVerification,
             supplierCheckState: supplierCheck?.state
         )
-        return CustomerTrip(id: id, group: group, status: status, paymentStatus: paymentStatus, paymentProofStatus: paymentProofStatus, ticketingStatus: ticketingStatus, amountMinor: amountMinor, currency: currency, holdExpiresAt: holdExpiresAt, ticketDocumentAvailable: ticketDocumentAvailable, nextAction: nextAction ?? "VIEW_TRIP", createdAt: createdAt, updatedAt: updatedAt, itineraryLabel: origin.flatMap { a in destination.map { "\(a) to \($0)" } } ?? "Trip itinerary", segments: segments, seats: assignments, tickets: tickets?.map { .init(ticketNumber: $0.ticketNumber) } ?? [], summary: summary, offline: offline, fetchedAt: fetchedAt)
+        let change = confirmedChange.flatMap { change -> TripDetail.ItineraryChange? in
+            let current = (change.current ?? []).map(Self.segment)
+            guard !current.isEmpty else { return nil }
+            return .init(previous: (change.previous ?? []).map(Self.segment), current: current)
+        }
+        let detail = TripDetail(
+            reference: travelportLocator, travelerCount: travelerCount, travelers: travelers ?? [],
+            seatState: seatReservation.flatMap { TripDetail.SeatState(rawValue: $0.state) },
+            confirmedChange: change, ticketDocument: ticketDocument,
+            lastSupplierCheckedAt: lastSupplierCheckedAt, ticketEmailStatus: ticketEmailStatus,
+            abandonedAt: abandonedAt, originCode: origin, destinationCode: destination, resumeTarget: resumeTarget.flatMap(TripDetail.ResumeTarget.init(rawValue:))
+        )
+        return CustomerTrip(
+            id: id, group: group, status: status, paymentStatus: paymentStatus,
+            paymentProofStatus: paymentProofStatus, ticketingStatus: ticketingStatus, amountMinor: amountMinor,
+            currency: currency, holdExpiresAt: holdExpiresAt,
+            ticketDocumentAvailable: ticketDocument?.available ?? ticketDocumentAvailable,
+            nextAction: nextAction ?? "VIEW_TRIP", createdAt: createdAt, updatedAt: updatedAt,
+            itineraryLabel: origin.flatMap { start in destination.map { "\(start) to \($0)" } } ?? "Trip itinerary",
+            segments: segments, seats: assignments,
+            tickets: tickets?.map {
+                TripTicket(ticketNumber: $0.ticketNumber, passengerIndices: $0.passengerIndices ?? [],
+                           associationConfidence: $0.associationConfidence, status: $0.status)
+            } ?? [],
+            summary: summary, detail: detail, offline: offline, fetchedAt: fetchedAt
+        )
     }
+    private static func segment(_ value: [String: JSONValue]) -> TripSegment {
+        TripSegment(
+            origin: value["departureAirportCode"]?.string ?? value["origin"]?.string ?? value["from"]?.string,
+            destination: value["arrivalAirportCode"]?.string ?? value["destination"]?.string ?? value["to"]?.string,
+            departureTime: value["departureTime"]?.string ?? value["departureAt"]?.string,
+            arrivalTime: value["arrivalTime"]?.string ?? value["arrivalAt"]?.string,
+            carrier: value["marketingCarrier"]?.string ?? value["carrier"]?.string ?? value["carrierCode"]?.string,
+            flightNumber: value["flightNumber"]?.string ?? value["number"]?.string,
+            id: value["id"]?.string,
+            legID: value["legId"]?.string,
+            legIndex: value["legIndex"]?.int,
+            originCity: value["departureCity"]?.string,
+            destinationCity: value["arrivalCity"]?.string,
+            departureDate: value["departureDate"]?.string,
+            arrivalDate: value["arrivalDate"]?.string,
+            airline: value["airlineName"]?.string,
+            operatingCarrier: value["operatingCarrier"]?.string,
+            operatingAirline: value["operatingCarrierName"]?.string,
+            durationMinutes: value["durationMinutes"]?.int,
+            departureTerminal: value["departureTerminal"]?.string,
+            arrivalTerminal: value["arrivalTerminal"]?.string,
+            baggage: value["baggage"]?.string ?? value["baggage"]?.object?["description"]?.string
+        )
+    }
+
 }
-private struct TripTicketDTO: Decodable { let ticketNumber: String? }
+private struct TripTicketDTO: Decodable {
+    let ticketNumber: String?
+    let passengerIndices: [Int]?
+    let associationConfidence: String?
+    let status: String?
+}
+private struct TripSeatReservationDTO: Decodable { let state: String }
+private struct TripItineraryChangeDTO: Decodable {
+    let previous: [[String: JSONValue]]?
+    let current: [[String: JSONValue]]?
+}
 private enum JSONValue: Decodable { case string(String), number(Double), object([String: JSONValue]), array([JSONValue]), bool(Bool), null
     init(from decoder: Decoder) throws { let c = try decoder.singleValueContainer(); if c.decodeNil() { self = .null } else if let v = try? c.decode(String.self) { self = .string(v) } else if let v = try? c.decode(Int.self) { self = .number(Double(v)) } else if let v = try? c.decode(Double.self) { self = .number(v) } else if let v = try? c.decode(Bool.self) { self = .bool(v) } else if let v = try? c.decode([String: JSONValue].self) { self = .object(v) } else { self = .array(try c.decode([JSONValue].self)) } }
     var string: String? { if case let .string(v) = self { v } else { nil } }; var int: Int? { if case let .number(v) = self { Int(v) } else { nil } }; var object: [String: JSONValue]? { if case let .object(v) = self { v } else { nil } }; var array: [JSONValue]? { if case let .array(v) = self { v } else { nil } }

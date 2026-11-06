@@ -26,6 +26,17 @@ struct RemoteBookingRequestRepository: BookingRequestRepository {
         catch { return .unknownError }
     }
 
+    func getPassengerResume(bookingId: String) async throws -> PassengerResumeDraft? {
+        guard let token = try await tokenProvider.accessToken() else { return nil }
+        let response = try await transport.send(HTTPRequest(
+            target: .mobile("bookings/\(bookingId)/review"), authorization: .bearer(token)
+        ))
+        guard (200..<300).contains(response.statusCode),
+              let draft = try? JSONDecoder().decode(PassengerResumeDTO.self, from: response.data),
+              draft.id == bookingId, draft.abandonedAt == nil, draft.status.bookingStatus == .draftSaved else { return nil }
+        return draft.domain
+    }
+
     func getStatus(reviewId: String) async throws -> BookingStatusResult {
         try await fetchStatus(reviewId: reviewId, method: .get, expectedStatusCode: 200)
     }
@@ -50,7 +61,8 @@ struct RemoteBookingRequestRepository: BookingRequestRepository {
             return .success(.init(outcome: outcome, bookingReference: reference,
                                   reconciliationState: dto.reconciliationState,
                                   lastSupplierCheckedAt: dto.lastSupplierCheckedAt,
-                                  allowedNextActions: actions))
+                                  allowedNextActions: actions,
+                                  abandonmentState: dto.abandonment?.state.flatMap(BookingAbandonmentState.init(rawValue:))))
         } catch is CancellationError { throw CancellationError() }
         catch HTTPTransportError.networkUnavailable, HTTPTransportError.timedOut { return .networkUnavailable }
         catch { return .unknownError }
@@ -145,6 +157,9 @@ struct RemoteBookingRequestRepository: BookingRequestRepository {
 }
 
 private struct BookingStatusDTO: Decodable {
+    struct Abandonment: Decodable { let state: String? }
+
+    let abandonment: Abandonment?
     let outcomeCode: String
     let travelportLocator: String?
     let reconciliationState: BookingReconciliationState
@@ -210,10 +225,56 @@ private struct BookingResponseDTO: Decodable {
     }
 }
 private struct SelectedOfferSnapshotDTO: Decodable { let quoteRevision: String? }
+private struct PassengerResumeDTO: Decodable {
+    struct Offer: Decodable {
+        struct Snapshot: Decodable { let details: FlightDetailsDTO }
+        let searchSessionId, offerId, offerRef: String
+        let expiresAt: String?
+        let detailsSnapshot: Snapshot?
+    }
+
+    let id, status: String
+    let abandonedAt: String?
+    let selectedOfferSnapshot: Offer?
+    let passengerDetailsSnapshot: PassengerSnapshotDTO?
+    let contactSnapshot: ContactSnapshotDTO?
+
+    var domain: PassengerResumeDraft? {
+        guard let offer = selectedOfferSnapshot, let details = offer.detailsSnapshot?.details,
+              let passengers = passengerDetailsSnapshot?.passengers, !passengers.isEmpty else { return nil }
+        let reference = FlightOfferReference(
+            searchId: offer.searchSessionId, offerId: offer.offerId, offerToken: offer.offerRef,
+            provider: .unknown, contentSource: nil, responseId: nil, productIds: [],
+            termsAndConditionsId: nil, brandRef: nil,
+            expiresAt: offer.expiresAt.flatMap { try? Date($0, strategy: .iso8601) }
+        )
+        let drafts = passengers.compactMap(\.resumeDraft)
+        guard let flight = try? FlightDetailsResponseMapper.map(details, reference: reference),
+              drafts.count == passengers.count, drafts.count == flight.travelers.total else { return nil }
+        return .init(flightDetails: flight, passengers: drafts, email: contactSnapshot?.email, phone: contactSnapshot?.phone)
+    }
+}
 private struct PassengerSnapshotDTO: Decodable { let passengers: [PassengerReviewDTO] }
 private struct PassengerReviewDTO: Decodable {
     let title, firstName, lastName, passportNumber, nationality: String
+    let type, gender, dateOfBirth, passportExpiryDate, passportIssuingCountry, passportUploadId: String?
     var domain: BookingReviewPassenger { .init(title: title, firstName: firstName, lastName: lastName, passportNumber: passportNumber, nationality: nationality) }
+
+    var resumeDraft: PassengerDetailsDraft? {
+        let passengerType: PassengerType
+        switch type?.uppercased() {
+        case "ADT", "ADULT": passengerType = .adult
+        case "CHD", "CHILD": passengerType = .child
+        case "INF", "INFANT": passengerType = .infant
+        default: return nil
+        }
+        return .init(
+            passengerType: passengerType, title: title, gender: gender ?? "", firstName: firstName, lastName: lastName,
+            dateOfBirth: dateOfBirth.flatMap(LocalDate.init(iso8601:)), nationalityCountryCode: nationality,
+            passportNumber: passportNumber, passportExpiryDate: passportExpiryDate.flatMap(LocalDate.init(iso8601:)),
+            passportIssuingCountryCode: passportIssuingCountry ?? "", document: nil, passportUploadId: passportUploadId
+        )
+    }
 }
 private struct ContactSnapshotDTO: Decodable {
     let email, phone: String

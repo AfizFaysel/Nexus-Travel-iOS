@@ -28,6 +28,41 @@ struct RemotePassportUploadRepositoryTests {
         #expect(requests[1].value(forHTTPHeaderField: "Content-Type") == "image/png")
     }
 
+    @Test func resumingDraftPatchesExistingBookingWithSavedPassport() async throws {
+        let loader = PassportUploadRecordingLoader(responses: [
+            Self.response(200, #"{"id":"saved-trip","status":"READY_TO_HOLD","amountMinor":100,"currency":"ETB"}"#)
+        ])
+        let transport = HTTPTransport(loader: loader)
+        let tokens = AuthTokenProvider(sessionStore: PassportSessionStore())
+        let repository = RemotePassengerDetailsRepository(
+            transport: transport, tokenProvider: tokens,
+            passportUploadRepository: RemotePassportUploadRepository(transport: transport, tokenProvider: tokens)
+        )
+        let reference = FlightOfferReference(
+            searchId: "saved-search", offerId: "saved-offer", offerToken: "saved-ref", provider: .unknown,
+            contentSource: nil, responseId: nil, productIds: [], termsAndConditionsId: nil, brandRef: nil, expiresAt: nil
+        )
+        let passenger = PassengerDetailsDraft(
+            passengerType: .adult, title: "Mr", gender: "Male", firstName: "Avery", lastName: "Morgan",
+            dateOfBirth: LocalDate(iso8601: "1992-01-15"), nationalityCountryCode: "ET", passportNumber: "example",
+            passportExpiryDate: LocalDate(iso8601: "2030-02-15"), passportIssuingCountryCode: "ET",
+            document: nil, passportUploadId: "saved-passport"
+        )
+        _ = try await repository.submitPassengerDetails(.init(
+            offerReference: reference, passengers: [passenger],
+            contact: .init(email: "avery@example.test", countryDialCode: "+251", phoneNumber: "911223344"),
+            clientSessionId: "saved-operation", bookingId: "saved-trip"
+        ))
+
+        let requests = await loader.requests
+        let request = try #require(requests.first)
+        let body = try #require(request.httpBody)
+        #expect(requests.count == 1)
+        #expect(request.httpMethod == "PATCH")
+        #expect(request.url?.path.hasSuffix("/bookings/saved-trip/passengers") == true)
+        #expect(String(decoding: body, as: UTF8.self).contains("saved-passport"))
+    }
+
     @Test func rejectsUnsupportedDocumentBeforeNetwork() async throws {
         let loader = PassportUploadRecordingLoader(responses: [])
         let repository = RemotePassportUploadRepository(

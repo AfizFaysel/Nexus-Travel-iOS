@@ -145,14 +145,31 @@ struct AppShell: View {
                 tripsRepository: tripsRepository,
                 exploreRepository: exploreRepository,
                 profileRepository: profileRepository,
+                supportRepository: supportRepository,
                 securityRepository: securityRepository,
                 airportRepository: airportRepository,
                 profileViewModel: profileViewModel,
                 preferencesViewModel: preferencesViewModel,
                 authRepository: authRepository,
                 bookingFlowState: bookingFlowState,
-                onSearchAgain: startFreshSearch
+                onSearchAgain: startFreshSearch,
+                onTripSearch: openTripSearch
             )
+        }
+    }
+
+    private func openTripSearch(_ trip: CustomerTrip?) {
+        freshSearchTask?.cancel()
+        bookingFlowState.clear()
+        router.popToRoot()
+        router.select(.home)
+        router.popToRoot()
+        freshSearchTask = Task {
+            try? await homeViewModel.prefillTripSearch(
+                originCode: trip?.detail?.originCode ?? trip?.segments.first?.origin,
+                destinationCode: trip?.detail?.destinationCode ?? trip?.segments.last?.destination
+            )
+            if !Task.isCancelled { freshSearchTask = nil }
         }
     }
 
@@ -273,6 +290,7 @@ private struct AppDestinations: ViewModifier {
     let tripsRepository: any TripsRepository
     let exploreRepository: any ExploreRepository
     let profileRepository: any ProfileRepository
+    let supportRepository: RemoteSupportRepository
     let securityRepository: any AccountSecurityRepository
     let airportRepository: any AirportRepository
     let profileViewModel: ProfileViewModel
@@ -280,6 +298,7 @@ private struct AppDestinations: ViewModifier {
     let authRepository: any AuthRepository
     let bookingFlowState: BookingFlowState
     let onSearchAgain: () -> Void
+    let onTripSearch: (CustomerTrip?) -> Void
 
     func body(content: Content) -> some View {
         content.navigationDestination(for: AppRoute.self) { route in
@@ -315,8 +334,14 @@ private struct AppDestinations: ViewModifier {
                         router.completeBookingAuth()
                     }
                 )
-            case .passengerDetails:
-                if let details = bookingFlowState.passengerDetails {
+            case let .passengerDetails(route):
+                if let bookingId = route.bookingId {
+                    PassengerResumeScreen(
+                        bookingId: bookingId, bookingRepository: bookingRequestRepository,
+                        repository: passengerDetailsRepository, router: router, bookingFlowState: bookingFlowState,
+                        today: Self.currentLocalDate, onSearchAgain: { onTripSearch(nil) }
+                    )
+                } else if let details = bookingFlowState.passengerDetails {
                     PassengerDetailsScreenRoute(
                         viewModel: PassengerDetailsViewModel(
                             details: details, repository: passengerDetailsRepository,
@@ -349,9 +374,23 @@ private struct AppDestinations: ViewModifier {
                 )
             case let .tripDetail(route):
                 TripDetailScreenRoute(
-                    viewModel: TripDetailViewModel(bookingId: route.tripId, repository: tripsRepository),
-                    router: router,
-                    onUploadPaymentProof: { router.push(.paymentProof(.init(bookingId: $0))) }
+                    viewModel: TripDetailViewModel(bookingId: route.tripId, repository: tripsRepository) { bookingID in
+                        try await bookingRequestRepository.requestStatusCheck(reviewId: bookingID)
+                    },
+                    supportRepository: supportRepository,
+                    onUploadPaymentProof: { router.push(.paymentProof(.init(bookingId: $0))) },
+                    onSearchAgain: { onTripSearch($0) },
+                    onResume: { trip in
+                        switch trip.detail?.resumeTarget {
+                        case .review:
+                            bookingFlowState.clear()
+                            router.push(.bookingReview(.init(reviewId: trip.id)))
+                        case .passengers:
+                            router.push(.passengerDetails(.init(bookingId: trip.id)))
+                        case .search, nil:
+                            onTripSearch(trip)
+                        }
+                    }
                 )
             case let .destinationDetail(route):
                 ExploreDetailScreenRoute(
@@ -466,13 +505,15 @@ private extension View {
         tripsRepository: any TripsRepository,
         exploreRepository: any ExploreRepository,
         profileRepository: any ProfileRepository,
+        supportRepository: RemoteSupportRepository,
         securityRepository: any AccountSecurityRepository,
         airportRepository: any AirportRepository,
         profileViewModel: ProfileViewModel,
         preferencesViewModel: PreferencesViewModel,
         authRepository: any AuthRepository,
         bookingFlowState: BookingFlowState,
-        onSearchAgain: @escaping () -> Void
+        onSearchAgain: @escaping () -> Void,
+        onTripSearch: @escaping (CustomerTrip?) -> Void
     ) -> some View {
         modifier(AppDestinations(
             router: router,
@@ -486,13 +527,15 @@ private extension View {
             tripsRepository: tripsRepository,
             exploreRepository: exploreRepository,
             profileRepository: profileRepository,
+            supportRepository: supportRepository,
             securityRepository: securityRepository,
             airportRepository: airportRepository,
             profileViewModel: profileViewModel,
             preferencesViewModel: preferencesViewModel,
             authRepository: authRepository,
             bookingFlowState: bookingFlowState,
-            onSearchAgain: onSearchAgain
+            onSearchAgain: onSearchAgain,
+            onTripSearch: onTripSearch
         ))
     }
 }

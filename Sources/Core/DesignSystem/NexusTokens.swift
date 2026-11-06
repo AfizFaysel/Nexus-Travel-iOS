@@ -26,6 +26,7 @@ enum NexusSpacingMode: Equatable {
 }
 
 enum NexusOpacity {
+    static let flightTimelineMarker = 0.6
     static let darkScrim = 0.65
     static let mainBottomBarBorder = 0.2
 }
@@ -191,6 +192,7 @@ enum NexusRadius {
 
 /// Android-mirrored layout tokens in points.
 enum NexusLayout {
+    static let flightTimeMinimumScale: CGFloat = 0.85
     static let tripTabIndicatorHeight: CGFloat = 2
     static let tripLogoWidth: CGFloat = 48
     static let tripLogoHeight: CGFloat = 32

@@ -32,6 +32,8 @@ struct TripsUiState: Equatable, Sendable {
     private let repository: any TripsRepository
     private let authRepository: any AuthRepository
     private var generation = 0
+    /// A forced refresh that has not finished yet; a load that supersedes it inherits the force.
+    private var forcePending = false
     private var hasLoaded = false
     private var loadedPageCounts: [TripView: Int] = [:]
     private var savedPages: [TripView: TripPage] = [:]
@@ -62,6 +64,7 @@ struct TripsUiState: Equatable, Sendable {
 
     func clearForLogout() {
         generation += 1
+        forcePending = false
         hasLoaded = false
         accountID = nil
         loadedPageCounts.removeAll()
@@ -72,6 +75,9 @@ struct TripsUiState: Equatable, Sendable {
     func load(forceRefresh: Bool = false) async throws {
         generation += 1
         let request = generation
+        let forceRefresh = forceRefresh || forcePending
+        forcePending = forceRefresh
+        defer { if request == generation { forcePending = false } }
         var prior = state
 
         do {

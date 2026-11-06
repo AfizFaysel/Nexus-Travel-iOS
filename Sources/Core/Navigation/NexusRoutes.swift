@@ -35,7 +35,7 @@ struct DeleteAccountRoute: Hashable, Sendable {}
 struct MainAuthRoute: Hashable, Sendable {}
 struct SearchResultsRoute: Hashable, Sendable { let searchId: String }
 struct FlightDetailsRoute: Hashable, Sendable { let reference: FlightOfferReference }
-struct PassengerDetailsRoute: Hashable, Sendable {}
+struct PassengerDetailsRoute: Hashable, Sendable { var bookingId: String? }
 struct BookingAuthRoute: Hashable, Sendable {}
 struct SeatSelectionRoute: Hashable, Sendable { let bookingId: String }
 struct BookingReviewRoute: Hashable, Sendable { let reviewId: String }

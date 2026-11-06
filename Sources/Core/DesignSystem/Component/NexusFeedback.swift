@@ -162,6 +162,8 @@ struct NexusFeedbackPanel: View {
     var status: NexusStatus = .error
     var primaryActionLabel: String?
     var onPrimaryAction: (() -> Void)?
+    var secondaryActionLabel: String?
+    var onSecondaryAction: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: NexusSpacing.space16) {
@@ -175,7 +177,12 @@ struct NexusFeedbackPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let primaryActionLabel, let onPrimaryAction {
-                NexusPrimaryButton(primaryActionLabel, fillsWidth: true, action: onPrimaryAction)
+                VStack(spacing: NexusSpacing.space8) {
+                    NexusPrimaryButton(primaryActionLabel, fillsWidth: true, action: onPrimaryAction)
+                    if let secondaryActionLabel, let onSecondaryAction {
+                        NexusSecondaryButton(secondaryActionLabel, fillsWidth: true, action: onSecondaryAction)
+                    }
+                }
             }
         }
         .foregroundStyle(status.colors.content)

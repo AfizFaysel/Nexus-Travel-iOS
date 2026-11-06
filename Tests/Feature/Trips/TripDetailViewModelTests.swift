@@ -19,6 +19,60 @@ import Testing
         #expect(viewModel.state.primaryActionLabel == "Check status")
         #expect(viewModel.state.secondaryActionLabel != "Upload payment receipt")
     }
+    @Test func serverActionPolicyOverridesStalePaymentAction() async throws {
+        var trip = Self.trip.with(status: "BOOKING_HELD", nextAction: "UPLOAD_PAYMENT_PROOF", paymentProofStatus: "MISSING")
+        trip.summary = TripSummary(
+            presentation: .init(
+                state: "PAID_NEEDS_ATTENTION",
+                section: .attention,
+                primaryAction: "GET_HELP",
+                allowedActions: ["GET_HELP", "VIEW_TRIP"],
+                progress: .init(booking: "COMPLETE", payment: "COMPLETE", ticket: "PENDING")
+            ),
+            route: .init(origin: "ADD", destination: "DXB"),
+            departureDate: nil,
+            returnDate: nil,
+            carrier: nil,
+            airline: nil,
+            logoURL: nil,
+            tripType: nil,
+            verification: nil,
+            supplierCheckState: nil
+        )
+        let viewModel = TripDetailViewModel(bookingId: "b-1", repository: TripsFakeRepository(detail: .success(trip)))
+
+        try await viewModel.load()
+
+        #expect(viewModel.state.primaryActionLabel == "Get help")
+        #expect(!trip.canUploadReceipt)
+    }
+
+    @Test func abandonedTripUsesBookingStatusAndOffersSupport() async throws {
+        var trip = Self.trip
+        trip.summary = TripSummary(
+            presentation: .init(
+                state: "ABANDONED", section: .attention, primaryAction: "CHECK_STATUS",
+                allowedActions: ["CHECK_STATUS"],
+                progress: .init(booking: "PENDING", payment: "PENDING", ticket: "PENDING")
+            ),
+            route: .init(origin: "ADD", destination: "DXB"),
+            departureDate: nil, returnDate: nil, carrier: nil, airline: nil, logoURL: nil,
+            tripType: nil, verification: nil, supplierCheckState: nil
+        )
+        let repository = TripsFakeRepository(detail: .success(trip))
+        let viewModel = TripDetailViewModel(bookingId: trip.id, repository: repository) { bookingID in
+            #expect(bookingID == "b-1")
+            return .success(.init(outcome: .unknown, bookingReference: nil, abandonmentState: .supportReview))
+        }
+
+        try await viewModel.load()
+        try await viewModel.load(forceRefresh: true)
+
+        #expect(viewModel.state.trip?.offersDetailSupport == true)
+        #expect(viewModel.state.notice.contains("couldn’t confirm the reservation’s cancellation"))
+        #expect(await repository.supplierRefreshCount == 0)
+    }
+
     @Test func staleUploadActionCannotUnlockUnconfirmedOrChangedHold() {
         let unknown = Self.trip.with(status: "HOLD_UNCONFIRMED", nextAction: "UPLOAD_PAYMENT_PROOF")
         let changed = Self.trip.with(status: "HOLD_CHANGE_REVIEW", nextAction: "UPLOAD_PAYMENT_PROOF")
@@ -62,8 +116,13 @@ private actor TripsFakeRepository: TripsRepository {
     let detail: TripDetailResult
     init(detail: TripDetailResult) { self.detail = detail }
     func trips(view: TripView, forceRefresh: Bool, cursor: String?) async throws -> TripPageState { .loading }
-    func requestSupplierRefresh(bookingIDs: [String]) async throws -> TripSupplierRefreshResult { .accepted(pending: false) }
+    private(set) var supplierRefreshCount = 0
+    func requestSupplierRefresh(bookingIDs: [String]) async throws -> TripSupplierRefreshResult {
+        supplierRefreshCount += 1
+        return .accepted(pending: false)
+    }
     func tripDetail(id: String, forceRefresh: Bool) async throws -> TripDetailResult { detail }
     func resolveTicketDocument(id: String) async throws -> TicketDocumentResult { .unavailable }
-    func cacheTicketPdf(id: String, downloadURL: URL) async throws -> CachedTicketResult { .unknownError }
+    func cachedTicketPdf(id: String, version: String?) async throws -> CachedTicketResult? { nil }
+    func cacheTicketPdf(id: String, downloadURL: URL, version: String?) async throws -> CachedTicketResult { .unknownError }
 }

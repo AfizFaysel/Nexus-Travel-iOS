@@ -170,6 +170,20 @@ final class HomeViewModel {
         }
     }
 
+    func prefillTripSearch(originCode: String?, destinationCode: String?) async throws {
+        let origin = try await airport(matching: originCode ?? "")
+        let destination = try await airport(matching: destinationCode ?? "")
+        try Task.checkCancellation()
+        uiState.origin = origin
+        uiState.destination = destination
+        uiState.departureDate = nil
+        uiState.returnDate = nil
+        uiState.tripType = .oneWay
+        uiState.multiCityLegs = []
+        uiState.selectedService = .flight
+        clearFeedback()
+    }
+
     func prefillDestination(airportCode: String) async throws {
         guard let airport = try await airport(matching: airportCode) else { return }
         uiState.destination = airport
@@ -320,6 +334,7 @@ final class HomeViewModel {
     }
 
     private func airport(matching code: String) async throws -> Airport? {
+        guard !code.isEmpty else { return nil }
         do {
             return try await airportRepository.searchAirports(query: code)
                 .first { $0.code.caseInsensitiveCompare(code) == .orderedSame }

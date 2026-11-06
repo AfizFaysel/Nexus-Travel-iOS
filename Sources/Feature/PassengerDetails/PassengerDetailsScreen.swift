@@ -65,6 +65,12 @@ struct PassengerDetailsScreen: View {
                 set: { viewModel.forms[viewModel.activePassengerIndex] = $0 })
     }
 
+    private var documentLabel: String {
+        let passenger = viewModel.forms[viewModel.activePassengerIndex]
+        if let document = passenger.passportDocument { return document.displayName }
+        return passenger.passportUploadId == nil ? "Choose passport document" : "Replace saved passport document"
+    }
+
     var body: some View {
         Form {
             if let message = viewModel.errorMessage {
@@ -107,7 +113,10 @@ struct PassengerDetailsScreen: View {
                 countryPicker("Nationality", selection: form.nationalityCountryCode)
             }
             Section("Passport") {
-                TextField("Passport number", text: form.passportNumber)
+                TextField("Passport number", text: Binding(
+                    get: { form.wrappedValue.passportNumber },
+                    set: { newValue in viewModel.updatePassportNumber(newValue) }
+                ))
                     .textInputAutocapitalization(.characters)
                 dateFields("Expiry date", day: form.passportExpiryDay,
                            month: form.passportExpiryMonth, year: form.passportExpiryYear)
@@ -118,13 +127,13 @@ struct PassengerDetailsScreen: View {
                         viewModel.forms[index].passportExpiryDate = viewModel.forms[index].passportExpiryInput().parsed
                     }
                 countryPicker("Issuing country", selection: form.passportIssuingCountryCode)
-                Button(viewModel.forms[viewModel.activePassengerIndex].passportDocument?.displayName ?? "Choose passport document", systemImage: NexusPlatformIconName.documentAdd.rawValue) {
+                Button(documentLabel, systemImage: NexusPlatformIconName.documentAdd.rawValue) {
                     importingPassengerIndex = viewModel.activePassengerIndex
                     importsDocument = true
                 }
                 .accessibilityHint("Choose a JPEG, PNG, or PDF up to 10 MB")
                 if let error = viewModel.validation.error(for: .passportDocument) {
-                    Text(error).foregroundStyle(.red)
+                    Text(error).foregroundStyle(NexusSemanticColors.errorText)
                 }
             }
             if viewModel.activePassengerIndex == 0 {
@@ -139,7 +148,7 @@ struct PassengerDetailsScreen: View {
             }
             if viewModel.validation.hasErrors {
                 Section("Check these details") {
-                    ForEach(viewModel.validation.summaryErrors, id: \.self) { Text($0).foregroundStyle(.red) }
+                    ForEach(viewModel.validation.summaryErrors, id: \.self) { Text($0).foregroundStyle(NexusSemanticColors.errorText) }
                 }
             }
             Section {
