@@ -6,6 +6,7 @@ struct AppShell: View {
     @State private var exploreRootScrollTarget: String?
     @State private var profileRootScrollTarget: String?
     @State private var freshSearchTask: Task<Void, Never>?
+    @State private var bottomSafeArea: CGFloat = 0
     let homeViewModel: HomeViewModel
     let exploreViewModel: ExploreViewModel
     let tripsViewModel: TripsViewModel
@@ -33,9 +34,14 @@ struct AppShell: View {
         selectedTabContent
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if router.showsMainBottomBar {
-                MainBottomBar(selected: router.selectedTab, onSelected: router.select)
+                MainBottomBar(
+                    selected: router.selectedTab,
+                    onSelected: router.select,
+                    bottomPadding: NexusLayout.mainBottomBarScreenGap(bottomSafeArea: bottomSafeArea) - bottomSafeArea
+                )
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomSafeArea = $0 }
         .foregroundStyle(NexusSemanticColors.textPrimary)
         .tint(NexusSemanticColors.brandPrimary)
         .sheet(
@@ -191,6 +197,8 @@ struct AppShell: View {
 private struct MainBottomBar: View {
     let selected: MainTab
     let onSelected: (MainTab) -> Void
+    /// Below the safe area edge; negative on Home-indicator devices so the bar sits in that band.
+    let bottomPadding: CGFloat
 
     var body: some View {
         HStack(spacing: 0) {
@@ -218,7 +226,8 @@ private struct MainBottomBar: View {
             y: NexusElevation.mainBottomBarDirectionalY
         )
         .padding(.horizontal, NexusSpacing.space16)
-        .padding(.vertical, NexusSpacing.space12)
+        .padding(.top, NexusSpacing.space12)
+        .padding(.bottom, bottomPadding)
         .background(NexusSemanticColors.backgroundPage.ignoresSafeArea(edges: .bottom))
     }
 

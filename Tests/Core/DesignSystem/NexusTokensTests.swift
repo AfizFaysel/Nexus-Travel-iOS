@@ -55,6 +55,12 @@ struct NexusTokensTests {
         ] == [6, 1, 12, 15])
     }
 
+    @Test func mainBottomBarSitsInTheHomeIndicatorBandLikeTheSystemTabBar() {
+        // Face ID iPhone portrait, iPhone landscape, iPad, Home-button iPhone, keyboard showing
+        #expect([34, 21, 20, 0, 336].map { NexusLayout.mainBottomBarScreenGap(bottomSafeArea: $0) }
+                == [21, 12, 12, 12, 348])
+    }
+
     @Test func adaptiveSpacingUsesExactAndroidProfiles() throws {
         let compact = try #require(NexusAdaptiveSpacing(screenWidth: 360, screenHeight: 1_000))
         let regular = try #require(NexusAdaptiveSpacing(screenWidth: 390, screenHeight: 844))

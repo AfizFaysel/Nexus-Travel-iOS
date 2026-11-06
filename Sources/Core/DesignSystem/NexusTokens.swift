@@ -214,6 +214,17 @@ enum NexusLayout {
     static let stickyCtaButtonWidthRegular: CGFloat = 164
     static let stickyCtaButtonWidthSpacious: CGFloat = 180
     static let mainBottomBarHeight: CGFloat = 78
+    /// Space kept between the bar and the Home indicator. With the 34 pt iPhone inset the bar
+    /// sits 21 pt above the screen edge, where the iOS 26 system tab bar sits.
+    static let mainBottomBarHomeIndicatorClearance: CGFloat = 13
+    /// Bottom insets larger than this come from the keyboard, not the Home indicator.
+    static let homeIndicatorInsetMax: CGFloat = 44
+
+    /// Distance between the bottom of the main bar and the screen's bottom edge.
+    static func mainBottomBarScreenGap(bottomSafeArea inset: CGFloat) -> CGFloat {
+        guard inset > 0, inset <= homeIndicatorInsetMax else { return inset + NexusSpacing.space12 }
+        return max(NexusSpacing.space12, inset - mainBottomBarHomeIndicatorClearance)
+    }
     static let iconDefault: CGFloat = 24
     static let iconSmall: CGFloat = 20
     static let iconLarge: CGFloat = 32
