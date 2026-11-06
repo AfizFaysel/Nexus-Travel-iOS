@@ -20,6 +20,22 @@ struct PaymentProofViewModelTests {
         #expect(model.state.canUploadProof)
     }
 
+    @Test func validatesLinksBeforeSubmittingAndTrimsInput() async throws {
+        let repository = PaymentProofFakeRepository(result: .success)
+        let model = PaymentProofViewModel(bookingId: "b-1", repository: repository, statusCheck: heldBookingStatus)
+        try await model.verifyStatus()
+        model.selectMethod(.link)
+        model.updateLink("http://receipts.example.test/123")
+        try await model.submit()
+        #expect(model.state.linkError != nil)
+        #expect(await repository.submittedLinks.isEmpty)
+
+        model.updateLink(" https://receipts.example.test/123 ")
+        try await model.submit()
+        #expect(await repository.submittedLinks == ["https://receipts.example.test/123"])
+        #expect(model.state.uploaded)
+    }
+
     @Test func successPublishesUploadedCopy() async throws {
         let repository = PaymentProofFakeRepository(result: .success)
         let viewModel = PaymentProofViewModel(bookingId: "b-1", repository: repository, statusCheck: heldBookingStatus)
@@ -79,6 +95,13 @@ private actor PaymentProofFakeRepository: PaymentProofRepository {
     func instructions(bookingId: String) async throws -> PaymentInstructionsResult {
         .available(currentInstructions)
     }
+    func submitLink(bookingId: String, url: String) async throws -> PaymentProofUploadResult {
+        submittedLinks.append(url)
+        return result
+    }
+
+    private(set) var submittedLinks: [String] = []
+
     func upload(bookingId: String, document: PaymentProofAttachment) async throws -> PaymentProofUploadResult {
         uploadCount += 1
         return result

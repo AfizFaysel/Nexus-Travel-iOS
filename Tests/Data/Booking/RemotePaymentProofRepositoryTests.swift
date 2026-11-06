@@ -24,6 +24,23 @@ struct RemotePaymentProofRepositoryTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
     }
 
+    @Test func submitsReceiptLinkToAuthenticatedMobileRoute() async throws {
+        let loader = PaymentProofLoader(responses: [Self.response(201, #"{"id":"proof-1"}"#)])
+        let repository = RemotePaymentProofRepository(
+            transport: HTTPTransport(loader: loader), tokenProvider: AuthTokenProvider(sessionStore: PaymentProofSessionStore())
+        )
+        let link = "https://receipts.example.test/payment/123"
+        let result = try await repository.submitLink(bookingId: "b-1", url: link)
+
+        #expect(result == .success)
+        let request = try #require(await loader.requests.first)
+        #expect(request.url?.path == "/api/v1/mobile/bookings/b-1/payment-proof-link")
+        #expect(request.httpMethod == "POST")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
+        let body = try #require(request.httpBody)
+        #expect(try JSONDecoder().decode([String: String].self, from: body) == ["url": link])
+    }
+
     @Test func uploadUsesMobileHandshakeAndBearerFreeSignedPut() async throws {
         let loader = PaymentProofLoader(responses: [
             Self.response(201, #"{"uploadId":"up-1","status":"PENDING","uploadUrl":"https://signed.example/proof","requiredHeaders":{"Content-Type":"application/pdf","x-meta":"proof"}}"#),
