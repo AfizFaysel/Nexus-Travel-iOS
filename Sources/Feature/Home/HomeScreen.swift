@@ -363,6 +363,7 @@ struct EditSearchSheet: View {
     let title: String
     let onEvent: (HomeUiEvent) -> Void
     @State private var contentHeight = NexusLayout.homeChoiceSheetInitialHeight
+    @State private var headerHeight: CGFloat = 0
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -374,7 +375,8 @@ struct EditSearchSheet: View {
                     NexusTextButton("Back to search") { onEvent(.dismissSheet) }
                         .padding(.horizontal, NexusSpacing.space12)
                         .padding(.top, NexusSpacing.space16)
-                    HomeSheetView(sheet: sheet, state: state, today: today, onEvent: onEvent)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+                    HomeSheetView(sheet: sheet, state: state, today: today, onEvent: onEvent, extraHeight: headerHeight)
                 }
             } else {
                 ScrollView {
@@ -590,11 +592,13 @@ private struct HomeSheetView: View {
     let state: HomeUiState
     let today: LocalDate
     let onEvent: (HomeUiEvent) -> Void
+    /// Height of anything shown above the picker in the same sheet, such as Back to search.
+    var extraHeight: CGFloat = 0
 
     var body: some View {
         content.presentationDetents(
             (sheet == .travelers || sheet == .cabinClass) && !dynamicTypeSize.isAccessibilitySize
-                ? [.height(contentHeight), .large] : [.large]
+                ? [.height(contentHeight + extraHeight), .large] : [.large]
         )
     }
 
