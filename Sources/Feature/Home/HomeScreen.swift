@@ -366,30 +366,37 @@ struct EditSearchSheet: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: NexusSpacing.space16) {
-                Text(title)
-                    .nexusTextStyle(NexusText.styles.sectionTitle)
-                    .foregroundStyle(NexusSemanticColors.textHeading)
-                    .accessibilityAddTraits(.isHeader)
-                HomeSearchPanel(state: state, onEvent: onEvent, cardPadding: 0, flat: true)
+        Group {
+            // Pickers replace the form inside this same sheet, as Android's EditSearchSheet does: stacked sheets
+            // could dismiss the search with them, while Back to search always returns to the form.
+            if let sheet = state.activeSheet {
+                VStack(alignment: .leading, spacing: NexusSpacing.space0) {
+                    NexusTextButton("Back to search") { onEvent(.dismissSheet) }
+                        .padding(.horizontal, NexusSpacing.space12)
+                        .padding(.top, NexusSpacing.space16)
+                    HomeSheetView(sheet: sheet, state: state, today: today, onEvent: onEvent)
+                }
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: NexusSpacing.space16) {
+                        Text(title)
+                            .nexusTextStyle(NexusText.styles.sectionTitle)
+                            .foregroundStyle(NexusSemanticColors.textHeading)
+                            .accessibilityAddTraits(.isHeader)
+                        HomeSearchPanel(state: state, onEvent: onEvent, cardPadding: 0, flat: true)
+                    }
+                    .padding(NexusSpacing.space24)
+                    // Size the sheet to its content, as Home's picker sheets do; multi-city grows it and long content scrolls.
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { contentHeight = $0 } }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.height(contentHeight), .large])
             }
-            .padding(NexusSpacing.space24)
-            // Size the sheet to its content, as Home's picker sheets do; multi-city grows it and long content scrolls.
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { contentHeight = $0 } }
         }
-        .scrollBounceBehavior(.basedOnSize)
         .background(NexusSemanticColors.surfaceBase)
-        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.height(contentHeight), .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(NexusSemanticColors.surfaceBase)
         .presentationCornerRadius(NexusRadius.xxxl)
-        .sheet(item: Binding(get: { state.activeSheet }, set: { if $0 == nil { onEvent(.dismissSheet) } })) { sheet in
-            HomeSheetView(sheet: sheet, state: state, today: today, onEvent: onEvent)
-                .presentationDragIndicator(.visible)
-                .presentationBackground(NexusSemanticColors.surfaceBase)
-                .presentationCornerRadius(NexusRadius.xxxl)
-        }
     }
 }
 
