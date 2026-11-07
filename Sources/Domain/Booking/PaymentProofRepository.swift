@@ -27,5 +27,6 @@ enum PaymentInstructionsResult: Equatable, Sendable {
 
 protocol PaymentProofRepository: Sendable {
     func instructions(bookingId: String) async throws -> PaymentInstructionsResult
+    func submitLink(bookingId: String, url: String) async throws -> PaymentProofUploadResult
     func upload(bookingId: String, document: PaymentProofAttachment) async throws -> PaymentProofUploadResult
 }

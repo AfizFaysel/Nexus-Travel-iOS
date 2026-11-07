@@ -17,7 +17,7 @@ struct PaymentProofScreenRoute: View {
             .onDisappear { uploadTask?.cancel() }
     }
     private func upload() {
-        start { try await viewModel.upload() }
+        start { try await viewModel.submit() }
     }
 
     private func start(_ operation: @escaping @MainActor () async throws -> Void) {
@@ -33,6 +33,16 @@ struct PaymentProofScreen: View {
     @Bindable var viewModel: PaymentProofViewModel
     let onBack, onUpload, onViewTrip, onCheckStatus: () -> Void
     @State private var importsDocument = false
+    @FocusState private var linkIsFocused: Bool
+
+    private var linkIsEditable: Bool { viewModel.state.canUploadProof && !viewModel.state.uploading }
+
+    /// Dismisses the keyboard first so a validation error under the link field is visible.
+    private func submit() {
+        linkIsFocused = false
+        onUpload()
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: NexusSpacing.space16) {
@@ -43,11 +53,9 @@ struct PaymentProofScreen: View {
                 if let instructions = viewModel.state.instructions, !viewModel.state.uploaded {
                     paymentInstructions(instructions)
                 }
-                VStack(alignment: .leading, spacing: NexusSpacing.space12) {
-                    Text("Receipt file").font(.headline)
-                    Text(viewModel.state.selected?.displayName ?? "PDF, JPG, or PNG up to 10 MB").foregroundStyle(.secondary)
-                    NexusSecondaryButton("Choose file", isEnabled: viewModel.state.canUploadProof, fillsWidth: true) { importsDocument = true }
-                }.padding(NexusSpacing.space16).background(.background, in: .rect(cornerRadius: NexusRadius.lg))
+                if !viewModel.state.uploaded {
+                    receiptInput
+                }
                 if let message = viewModel.state.message {
                     NexusFeedbackPanel(
                         title: viewModel.state.uploaded ? "Receipt submitted" :
@@ -64,13 +72,17 @@ struct PaymentProofScreen: View {
             }
             .padding(NexusSpacing.space20)
         }
+        .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) {
             Group {
                 if viewModel.state.uploaded {
                     NexusPrimaryButton("View trip", fillsWidth: true, action: onViewTrip)
                 } else {
-                    NexusPrimaryButton("Upload receipt", isEnabled: viewModel.state.selected != nil && viewModel.state.canUploadProof,
-                                       isLoading: viewModel.state.uploading, loadingTitle: "Uploading…", fillsWidth: true, action: onUpload)
+                    NexusPrimaryButton(viewModel.state.receiptMethod == .file ? "Upload receipt" : "Submit receipt link",
+                                       isEnabled: viewModel.state.canSubmit,
+                                       isLoading: viewModel.state.uploading,
+                                       loadingTitle: viewModel.state.receiptMethod == .file ? "Uploading…" : "Submitting…",
+                                       fillsWidth: true, action: submit)
                 }
             }
             .padding(NexusSpacing.space20)
@@ -83,6 +95,52 @@ struct PaymentProofScreen: View {
             viewModel.select(.init(uriString: url.absoluteString, displayName: url.lastPathComponent,
                                    mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType))
         }
+    }
+
+    private var receiptInput: some View {
+        VStack(alignment: .leading, spacing: NexusSpacing.space12) {
+            Picker("Receipt method", selection: Binding(
+                get: { viewModel.state.receiptMethod }, set: { viewModel.selectMethod($0) }
+            )) {
+                Text("Image or PDF").tag(ReceiptMethod.file)
+                Text("Receipt link").tag(ReceiptMethod.link)
+            }
+            .pickerStyle(.segmented)
+            .disabled(viewModel.state.uploading)
+
+            switch viewModel.state.receiptMethod {
+            case .file:
+                Text("Receipt file").font(.headline)
+                Text(viewModel.state.selected?.displayName ?? "PDF, JPG, or PNG up to 10 MB")
+                    .foregroundStyle(.secondary)
+                NexusSecondaryButton("Choose file", isEnabled: viewModel.state.canUploadProof && !viewModel.state.uploading,
+                                     fillsWidth: true) { importsDocument = true }
+            case .link:
+                NexusTextField(
+                    text: Binding(get: { viewModel.state.link }, set: { viewModel.updateLink($0) }),
+                    label: "Payment receipt link",
+                    placeholder: "Paste your bank receipt link",
+                    error: viewModel.state.linkError,
+                    isEnabled: linkIsEditable
+                )
+                .textContentType(.URL)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($linkIsFocused)
+
+                // Native PasteButton reads the clipboard without the "Allow Paste" prompt
+                // that a custom button (Android's "Paste from clipboard") would trigger on iOS.
+                PasteButton(payloadType: String.self) { @Sendable [viewModel] strings in
+                    guard let text = strings.first else { return }
+                    Task { @MainActor in viewModel.updateLink(text) }
+                }
+                .tint(NexusSemanticColors.actionPrimary)
+                .disabled(!linkIsEditable)
+            }
+        }
+        .padding(NexusSpacing.space16)
+        .background(.background, in: .rect(cornerRadius: NexusRadius.lg))
     }
 
     private func paymentInstructions(_ instructions: PaymentInstructions) -> some View {
@@ -103,17 +161,24 @@ struct PaymentProofScreen: View {
 
             if let account = viewModel.state.selectedAccount {
                 Divider()
-                Text(account.bankName).nexusTextStyle(NexusText.styles.sectionTitleSmall)
-                Text(account.legalName).foregroundStyle(NexusSemanticColors.textSecondary)
-                copyable("Account number", account.identifier)
                 if instructions.accounts.count > 1 {
-                    Menu("Choose other bank") {
-                        ForEach(instructions.accounts) { account in
-                            Button(account.bankName) { viewModel.selectAccount(account.id) }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .center, spacing: NexusSpacing.space12) {
+                            accountNames(account).fixedSize(horizontal: true, vertical: false)
+                            Spacer(minLength: 0)
+                            bankMenu(instructions.accounts, selected: account)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+                            accountNames(account)
+                            bankMenu(instructions.accounts, selected: account)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                     }
-                    .accessibilityIdentifier("payment-choose-bank")
+                } else {
+                    accountNames(account)
                 }
+                copyable("Account number", account.identifier)
             } else {
                 Text("No receiving accounts are available. Check again before transferring money.")
                     .foregroundStyle(NexusSemanticColors.textSecondary)
@@ -122,6 +187,38 @@ struct PaymentProofScreen: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(NexusSpacing.space16)
         .background(NexusSemanticColors.surfaceMuted, in: .rect(cornerRadius: NexusRadius.lg))
+    }
+
+    private func accountNames(_ account: ReceivingPaymentAccount) -> some View {
+        VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+            Text(account.legalName).nexusTextStyle(NexusText.styles.sectionTitleSmall)
+            Text(account.bankName).foregroundStyle(NexusSemanticColors.textSecondary)
+        }
+    }
+
+    private func bankMenu(_ accounts: [ReceivingPaymentAccount], selected account: ReceivingPaymentAccount) -> some View {
+        Menu {
+            ForEach(accounts) { option in
+                Button {
+                    viewModel.selectAccount(option.id)
+                } label: {
+                    if option.id == account.id {
+                        Label(option.bankName, systemImage: "checkmark")
+                    } else {
+                        Text(option.bankName)
+                    }
+                }
+            }
+        } label: {
+            Text("Choose other bank")
+                .nexusTextStyle(NexusText.styles.label)
+                .foregroundStyle(NexusSemanticColors.link)
+                .frame(minHeight: NexusLayout.touchMin)
+                .contentShape(Rectangle())
+        }
+        .menuIndicator(.hidden)
+        .accessibilityValue(account.bankName)
+        .accessibilityIdentifier("payment-choose-bank")
     }
 
     private func copyable(_ label: String, _ value: String) -> some View {
