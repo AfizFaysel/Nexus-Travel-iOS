@@ -167,7 +167,8 @@ struct BookingReviewScreen: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if viewModel.state.screenState == .content, let details = viewModel.state.details {
+            // After a booking attempt there is nothing left to book here, so the Book flight bar goes away.
+            if viewModel.state.screenState == .content, !viewModel.isAfterBookingAttempt, let details = viewModel.state.details {
                 VStack(spacing: NexusSpacing.space8) {
                     ViewThatFits(in: .horizontal) { HStack { Text("Total"); Spacer(); Text(details.fareTotal.formatted).fontWeight(.bold) }; VStack(alignment: .leading) { Text("Total"); Text(details.fareTotal.formatted).fontWeight(.bold) } }
                     Text("The airline hold is requested when you tap Book flight. A ticket is issued after payment verification.")
@@ -186,6 +187,14 @@ struct BookingReviewScreen: View {
     private var review: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: NexusSpacing.space16) {
+                // A pending outcome leads with its status, as Android's pending layout does; the details follow for reference.
+                if viewModel.state.bookingOutcomeUnknown {
+                    Text("We’re confirming your reservation")
+                        .nexusTextStyle(NexusText.styles.screenTitle)
+                        .foregroundStyle(NexusSemanticColors.textHeading)
+                        .accessibilityAddTraits(.isHeader)
+                    feedback
+                }
                 if let flightDetails {
                     Text("\(flightDetails.originCode) → \(flightDetails.destinationCode)").font(.title2.bold())
                     Text("\(flightDetails.departureDate.reviewLabel) · \(flightDetails.travelers.summary()) · \(flightDetails.cabinLabel)").foregroundStyle(.secondary)
@@ -205,25 +214,29 @@ struct BookingReviewScreen: View {
                         notice("Next step", "If the airline confirms a hold, upload your payment receipt for verification. Your ticket is not issued yet.")
                     }
                 }
-                if let message = viewModel.state.message {
-                    // Pending outcomes are amber, matching Android; no new search is offered while the airline may still hold seats.
-                    NexusFeedbackPanel(
-                        title: feedbackTitle, message: message,
-                        status: viewModel.state.bookingOutcomeUnknown ? .warning : .error,
-                        primaryActionLabel: feedbackActionLabel,
-                        onPrimaryAction: feedbackAction
-                    )
-                    if viewModel.state.isCheckingStatus { ProgressView("Checking booking status…") }
-                    if viewModel.state.isRepricing { ProgressView("Checking current fare…") }
-                    if viewModel.state.isAcceptingPrice { ProgressView("Confirming updated fare…") }
-                    if viewModel.state.bookingOutcomeUnknown, let bookingId = viewModel.state.details?.reviewId {
-                        SupportOptionsView(bookingId: bookingId)
-                    }
-                    if let checkedAt = lastSupplierCheckLabel {
-                        Text(checkedAt).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                if !viewModel.state.bookingOutcomeUnknown { feedback }
             }.padding(NexusSpacing.space16)
+        }
+    }
+
+    @ViewBuilder private var feedback: some View {
+        if let message = viewModel.state.message {
+            // Pending outcomes are amber, matching Android; no new search is offered while the airline may still hold seats.
+            NexusFeedbackPanel(
+                title: feedbackTitle, message: message,
+                status: viewModel.state.bookingOutcomeUnknown ? .warning : .error,
+                primaryActionLabel: feedbackActionLabel,
+                onPrimaryAction: feedbackAction
+            )
+            if viewModel.state.isCheckingStatus { ProgressView("Checking booking status…") }
+            if viewModel.state.isRepricing { ProgressView("Checking current fare…") }
+            if viewModel.state.isAcceptingPrice { ProgressView("Confirming updated fare…") }
+            if viewModel.state.bookingOutcomeUnknown, let bookingId = viewModel.state.details?.reviewId {
+                SupportOptionsView(bookingId: bookingId)
+            }
+            if let checkedAt = lastSupplierCheckLabel {
+                Text(checkedAt).font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
