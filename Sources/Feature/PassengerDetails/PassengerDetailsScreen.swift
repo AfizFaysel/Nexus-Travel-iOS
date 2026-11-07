@@ -85,7 +85,7 @@ struct PassengerDetailsScreen: View {
                             ForEach(viewModel.passengerTypes.indices, id: \.self) { index in
                                 Button(passengerLabel(at: index)) { viewModel.selectPassenger(index) }
                                     .buttonStyle(.bordered)
-                                    .tint(index == viewModel.activePassengerIndex ? .accentColor : .secondary)
+                                    .tint(index == viewModel.activePassengerIndex ? NexusSemanticColors.brandPrimary : NexusSemanticColors.textSecondary)
                                     .accessibilityAddTraits(index == viewModel.activePassengerIndex ? .isSelected : [])
                             }
                         }
@@ -103,7 +103,8 @@ struct PassengerDetailsScreen: View {
                 TextField("First name", text: form.firstName).textContentType(.givenName)
                 TextField("Last name", text: form.lastName).textContentType(.familyName)
                 dateFields("Date of birth", day: form.dateOfBirthDay,
-                           month: form.dateOfBirthMonth, year: form.dateOfBirthYear)
+                           month: form.dateOfBirthMonth, year: form.dateOfBirthYear,
+                           errors: viewModel.validation.errors(for: .dateOfBirth))
                     .onChange(of: viewModel.forms[viewModel.activePassengerIndex].dateOfBirthDay
                               + viewModel.forms[viewModel.activePassengerIndex].dateOfBirthMonth
                               + viewModel.forms[viewModel.activePassengerIndex].dateOfBirthYear) {
@@ -119,7 +120,8 @@ struct PassengerDetailsScreen: View {
                 ))
                     .textInputAutocapitalization(.characters)
                 dateFields("Expiry date", day: form.passportExpiryDay,
-                           month: form.passportExpiryMonth, year: form.passportExpiryYear)
+                           month: form.passportExpiryMonth, year: form.passportExpiryYear,
+                           errors: viewModel.validation.errors(for: .passportExpiry))
                     .onChange(of: viewModel.forms[viewModel.activePassengerIndex].passportExpiryDay
                               + viewModel.forms[viewModel.activePassengerIndex].passportExpiryMonth
                               + viewModel.forms[viewModel.activePassengerIndex].passportExpiryYear) {
@@ -141,7 +143,7 @@ struct PassengerDetailsScreen: View {
                     TextField("Email", text: form.email).textContentType(.emailAddress)
                         .textInputAutocapitalization(.never).keyboardType(.emailAddress)
                     HStack {
-                        TextField("Code", text: form.countryDialCode).frame(maxWidth: 90)
+                        TextField("Code", text: form.countryDialCode).frame(maxWidth: NexusLayout.passengerDialCodeWidth)
                         TextField("Mobile number", text: form.phoneNumber).keyboardType(.phonePad)
                     }
                 }
@@ -190,13 +192,19 @@ struct PassengerDetailsScreen: View {
     }
 
     private func dateFields(_ title: String, day: Binding<String>, month: Binding<String>,
-                            year: Binding<String>) -> some View {
+                            year: Binding<String>, errors: [String]) -> some View {
         VStack(alignment: .leading) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).nexusTextStyle(NexusText.styles.caption).foregroundStyle(NexusSemanticColors.textSecondary)
             HStack {
                 TextField("DD", text: day).keyboardType(.numberPad)
                 TextField("MM", text: month).keyboardType(.numberPad)
                 TextField("YYYY", text: year).keyboardType(.numberPad)
+            }
+            ForEach(errors, id: \.self) { error in
+                Text(error)
+                    .nexusTextStyle(NexusText.styles.errorText)
+                    .foregroundStyle(NexusSemanticColors.errorText)
+                    .accessibilityIdentifier("passenger-date-error")
             }
         }
     }

@@ -15,6 +15,8 @@ Replace passenger placeholder with validated passenger/contact form. Upload sele
 ## Acceptance
 
 - Android-equivalent validation, loading, content, error states and retry behavior.
+- Show age and date validation messages beside the corresponding date input.
+- A persisted passport upload satisfies document validation until the passport number changes or a replacement document is selected.
 - PDF/JPEG/PNG only; nonempty and at most 10 MB.
 - Stable operation-scoped idempotency key survives retry.
 - Signed PUT has no bearer and includes every backend `requiredHeaders` entry.

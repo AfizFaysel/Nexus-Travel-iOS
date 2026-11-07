@@ -365,7 +365,11 @@ private struct AppDestinations: ViewModifier {
                     viewModel: SeatSelectionViewModel(
                         bookingId: route.bookingId,
                         passengerCount: bookingFlowState.passengerDetails?.travelers.total ?? 1,
-                        repository: flightSeatsRepository
+                        repository: flightSeatsRepository,
+                        eligiblePassengerIndices: bookingFlowState.passengerDetails.map {
+                            Array(0..<($0.travelers.adults + $0.travelers.children))
+                        },
+                        currency: bookingFlowState.passengerDetails?.price.currency
                     ), router: router
                 )
             case let .bookingReview(route):

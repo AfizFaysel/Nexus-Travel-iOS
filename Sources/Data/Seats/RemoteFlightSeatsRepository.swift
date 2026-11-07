@@ -67,12 +67,24 @@ struct RemoteFlightSeatsRepository: FlightSeatsRepository {
 
 private struct SeatMapDTO: Decodable {
     let availability: String; let segments: [SegmentDTO]
+    let currency: String?
+    let passengerCount: Int?
+    let travelers: [TravelerDTO]?
+
+    struct TravelerDTO: Decodable {
+        let passengerIndex: Int
+        let seatEligible: Bool
+    }
     var domain: FlightSeatMap {
         let mappedAvailability: SeatMapAvailability = switch availability {
         case "AVAILABLE": .available; case "NOT_SUPPORTED": .notSupported
         case "TEMPORARILY_UNAVAILABLE": .temporarilyUnavailable; default: .notProvided
         }
-        return FlightSeatMap(availability: mappedAvailability, segments: segments.map(\.domain))
+        return FlightSeatMap(
+            availability: mappedAvailability, segments: segments.map(\.domain), currency: currency,
+            travelers: travelers?.map { .init(passengerIndex: $0.passengerIndex, seatEligible: $0.seatEligible) },
+            passengerCount: passengerCount
+        )
     }
 }
 private struct SegmentDTO: Decodable {

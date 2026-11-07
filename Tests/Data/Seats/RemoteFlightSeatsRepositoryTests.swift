@@ -4,7 +4,7 @@ import Testing
 
 struct RemoteFlightSeatsRepositoryTests {
     @Test func loadsAndMapsSeatMapContract() async throws {
-        let json = #"{"availability":"AVAILABLE","segments":[{"segmentId":"segment-1","airlineName":"Nexus Air","aircraftName":"A320","cabins":[{"name":"Economy","columns":["A"],"rows":[{"number":1,"seats":[{"number":"1A","status":"AVAILABLE","position":"WINDOW","features":["EXTRA_LEGROOM"],"price":{"amountMinor":2500,"currency":"USD"}}]}]}]}]}"#
+        let json = #"{"availability":"AVAILABLE","currency":"ETB","passengerCount":2,"travelers":[{"passengerIndex":0,"seatEligible":true},{"passengerIndex":1,"seatEligible":false}],"segments":[{"segmentId":"segment-1","airlineName":"Nexus Air","aircraftName":"A320","cabins":[{"name":"Economy","columns":["A"],"rows":[{"number":1,"seats":[{"number":"1A","status":"AVAILABLE","position":"WINDOW","features":["EXTRA_LEGROOM"],"price":{"amountMinor":2500,"currency":"USD"}}]}]}]}]}"#
         let loader = SeatRecordingLoader(responses: [Self.response(200, json)])
         let repository = Self.repository(loader)
 
@@ -12,6 +12,10 @@ struct RemoteFlightSeatsRepositoryTests {
 
         let map = try #require(result.map)
         #expect(map.availability == .available)
+        #expect(map.currency == "ETB")
+        #expect(map.passengerCount == 2)
+        #expect(map.travelers == [.init(passengerIndex: 0, seatEligible: true),
+                                  .init(passengerIndex: 1, seatEligible: false)])
         #expect(map.segments[0].cabins[0].rows[0].seats[0].features == [.extraLegroom])
         #expect(map.segments[0].cabins[0].rows[0].seats[0].price?.amount == 2500)
         let requests = await loader.requests

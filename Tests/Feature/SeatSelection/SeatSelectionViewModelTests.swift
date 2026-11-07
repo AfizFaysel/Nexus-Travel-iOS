@@ -42,6 +42,39 @@ struct SeatSelectionViewModelTests {
         #expect(!unavailable.state.canRetryLoad)
     }
 
+    @Test func serverEligibilityKeepsOriginalIndicesAndBlocksInfants() async throws {
+        let map = FlightSeatMap(
+            availability: .available, segments: Self.map.segments, currency: "ETB",
+            travelers: [.init(passengerIndex: 0, seatEligible: true),
+                        .init(passengerIndex: 1, seatEligible: false),
+                        .init(passengerIndex: 2, seatEligible: true)]
+        )
+        let model = SeatSelectionViewModel(
+            bookingId: "booking-1", passengerCount: 3, repository: FakeFlightSeatsRepository(map: map)
+        )
+        try await model.load()
+        #expect(model.state.eligiblePassengerIndices == [0, 2])
+        model.selectPassenger(2)
+        model.selectPassenger(1)
+        #expect(model.state.activePassengerIndex == 2)
+        model.select(Self.seat("1A"))
+        #expect(model.state.assignments.first?.passengerIndex == 2)
+        #expect(model.state.feeTotalLabel == "ETB 0.00")
+    }
+
+    @Test func emptyEligibilityNeverAllowsSeatAssignment() async throws {
+        let map = FlightSeatMap(
+            availability: .available, segments: Self.map.segments, currency: "ETB",
+            travelers: [.init(passengerIndex: 0, seatEligible: false)]
+        )
+        let model = SeatSelectionViewModel(
+            bookingId: "booking-1", passengerCount: 1, repository: FakeFlightSeatsRepository(map: map)
+        )
+        try await model.load()
+        model.select(Self.seat("1A"))
+        #expect(model.state.assignments.isEmpty)
+    }
+
     private static let map = FlightSeatMap(
         availability: .available,
         segments: [.init(id: "segment-1", airlineName: "Nexus Air", aircraftName: "A320", cabins: [

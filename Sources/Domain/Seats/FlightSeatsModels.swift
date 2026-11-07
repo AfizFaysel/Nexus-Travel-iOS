@@ -2,6 +2,14 @@
 struct FlightSeatMap: Equatable, Sendable {
     let availability: SeatMapAvailability
     let segments: [SeatMapSegment]
+    var currency: String? = nil
+    var travelers: [SeatMapTraveler]? = nil
+    var passengerCount: Int? = nil
+}
+
+struct SeatMapTraveler: Equatable, Sendable {
+    let passengerIndex: Int
+    let seatEligible: Bool
 }
 
 enum SeatMapAvailability: Equatable, Sendable { case available, notProvided, notSupported, temporarilyUnavailable }

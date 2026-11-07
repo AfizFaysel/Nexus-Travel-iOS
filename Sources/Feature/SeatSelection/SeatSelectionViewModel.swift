@@ -1,9 +1,28 @@
+import Foundation
 import Observation
 
 struct SeatSelectionUiState: Equatable, Sendable {
     var loading = true; var saving = false; var segments: [SeatMapSegment] = []
-    var activeSegmentIndex = 0; var activePassengerIndex = 0; let passengerCount: Int
+    var activeSegmentIndex = 0; var activePassengerIndex = 0; var passengerCount: Int
     var assignments: [SeatAssignment] = []; var message: String?; var canRetryLoad = false
+    var eligiblePassengerIndices: [Int] = []
+    var currency: String?
+
+    var feeTotalLabel: String? {
+        let priced = assignments.compactMap(\.price)
+        guard let currency = currency ?? priced.first?.currency else { return nil }
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .currency
+        formatter.currencyCode = currency
+        let digits = formatter.maximumFractionDigits
+        guard (0...6).contains(digits), priced.allSatisfy({ $0.currency == currency }) else { return nil }
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = digits
+        formatter.maximumFractionDigits = digits
+        let amount = Decimal(priced.reduce(0) { $0 + $1.amount }) / pow(Decimal(10), digits)
+        return formatter.string(from: amount as NSDecimalNumber).map { "\(currency) \($0)" }
+    }
 }
 enum SeatSelectionNavigation: Equatable, Sendable { case back, review(String) }
 
@@ -14,9 +33,13 @@ final class SeatSelectionViewModel {
     private let repository: any FlightSeatsRepository
     private var navigation: [SeatSelectionNavigation] = []
 
-    init(bookingId: String, passengerCount: Int, repository: any FlightSeatsRepository) {
+    init(bookingId: String, passengerCount: Int, repository: any FlightSeatsRepository,
+         eligiblePassengerIndices: [Int]? = nil, currency: String? = nil) {
         self.bookingId = bookingId; self.repository = repository
-        state = .init(passengerCount: max(passengerCount, 1))
+        let count = max(passengerCount, 1)
+        state = .init(passengerCount: count)
+        state.eligiblePassengerIndices = eligiblePassengerIndices ?? Array(0..<count)
+        state.currency = currency
     }
 
     func load() async throws {
@@ -24,6 +47,17 @@ final class SeatSelectionViewModel {
         switch try await repository.load(bookingId: bookingId) {
         case let .success(map):
             state.loading = false; state.segments = map.segments
+            state.currency = map.currency ?? state.currency
+            if let count = map.passengerCount, count >= 0 { state.passengerCount = count }
+            if let travelers = map.travelers {
+                state.eligiblePassengerIndices = Array(Set(travelers.filter {
+                    $0.seatEligible && $0.passengerIndex >= 0 && $0.passengerIndex < state.passengerCount
+                }.map(\.passengerIndex))).sorted()
+            }
+            state.assignments.removeAll { !state.eligiblePassengerIndices.contains($0.passengerIndex) }
+            if !state.eligiblePassengerIndices.contains(state.activePassengerIndex) {
+                state.activePassengerIndex = state.eligiblePassengerIndices.first ?? 0
+            }
             state.canRetryLoad = map.availability == .temporarilyUnavailable
             if map.segments.isEmpty {
                 state.message = state.canRetryLoad
@@ -41,10 +75,11 @@ final class SeatSelectionViewModel {
     }
 
     func selectSegment(_ index: Int) { if state.segments.indices.contains(index) { state.activeSegmentIndex = index } }
-    func selectPassenger(_ index: Int) { if (0..<state.passengerCount).contains(index) { state.activePassengerIndex = index } }
+    func selectPassenger(_ index: Int) { if state.eligiblePassengerIndices.contains(index) { state.activePassengerIndex = index } }
     func select(_ seat: FlightSeat) {
         guard seat.status == .available || seat.status == .selected,
-              state.segments.indices.contains(state.activeSegmentIndex) else { return }
+              state.segments.indices.contains(state.activeSegmentIndex),
+              state.eligiblePassengerIndices.contains(state.activePassengerIndex) else { return }
         let segment = state.segments[state.activeSegmentIndex]
         let passengerIndex = state.activePassengerIndex
         state.assignments.removeAll {

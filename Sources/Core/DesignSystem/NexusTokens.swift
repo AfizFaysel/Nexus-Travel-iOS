@@ -192,6 +192,8 @@ enum NexusRadius {
 
 /// Android-mirrored layout tokens in points.
 enum NexusLayout {
+    static let passengerDialCodeWidth: CGFloat = 90
+    static let seatRowLabelWidth: CGFloat = 24
     static let flightTimeMinimumScale: CGFloat = 0.85
     static let tripTabIndicatorHeight: CGFloat = 2
     static let tripLogoWidth: CGFloat = 48

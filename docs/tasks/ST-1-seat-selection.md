@@ -19,6 +19,8 @@ Replace seat-selection placeholder with backend-driven multi-segment, multi-pass
 - Available/selected seats are actionable; occupied/blocked/restricted seats are not.
 - One assignment per passenger and segment; one seat cannot belong to two passengers.
 - Segment/passenger tabs preserve assignments; fees reflect current choices.
+- Use backend traveler eligibility and retain original passenger indices. Infant passengers cannot select seats. Legacy responses use the known booking composition.
+- Zero seat fees use the booking or seat-map currency. Omit the amount when no currency is known.
 - Conflict keeps user on screen with seat-unavailable guidance; retry and skip work.
 - Cancellation propagates; stale loads/saves do not overwrite current state.
 - Every seat exposes number, position, features, price, selection, and availability to VoiceOver.

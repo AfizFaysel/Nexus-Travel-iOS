@@ -76,7 +76,7 @@ struct SeatSelectionScreen: View {
                 if let segment = viewModel.state.segments[safe: viewModel.state.activeSegmentIndex] {
                     aircraft(segment)
                     ForEach(segment.cabins, id: \.name) { cabin in
-                        Text(cabin.name).font(.headline).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(cabin.name).nexusTextStyle(NexusText.styles.sectionTitleSmall).frame(maxWidth: .infinity, alignment: .leading)
                         ForEach(cabin.rows) { row in seatRow(row, segment: segment) }
                     }
                 }
@@ -94,26 +94,26 @@ struct SeatSelectionScreen: View {
 
     private var passengerTabs: some View {
         Picker("Passenger", selection: Binding(get: { viewModel.state.activePassengerIndex }, set: { send(.passenger($0)) })) {
-            ForEach(0..<viewModel.state.passengerCount, id: \.self) { Text("Passenger \($0 + 1)").tag($0) }
+            ForEach(viewModel.state.eligiblePassengerIndices, id: \.self) { Text("Passenger \($0 + 1)").tag($0) }
         }.pickerStyle(.segmented)
     }
 
     private func aircraft(_ segment: SeatMapSegment) -> some View {
         VStack {
             NexusIcon(name: .flight, size: NexusIconSize.lg).accessibilityHidden(true)
-            if !segment.airlineName.isEmpty { Text(segment.airlineName).font(.headline) }
-            Text(segment.aircraftName).font(.subheadline).foregroundStyle(.secondary)
+            if !segment.airlineName.isEmpty { Text(segment.airlineName).nexusTextStyle(NexusText.styles.sectionTitleSmall) }
+            Text(segment.aircraftName).nexusTextStyle(NexusText.styles.bodySmall).foregroundStyle(NexusSemanticColors.textSecondary)
         }.frame(maxWidth: .infinity)
     }
 
     private func seatRow(_ row: SeatRow, segment: SeatMapSegment) -> some View {
         HStack(spacing: NexusSpacing.space8) {
-            Text("\(row.number)").font(.caption).frame(width: 24)
+            Text("\(row.number)").nexusTextStyle(NexusText.styles.caption).frame(width: NexusLayout.seatRowLabelWidth)
             ForEach(Array(row.seats.enumerated()), id: \.element.number) { index, seat in
                 if index > 0, row.seats[index - 1].position == .aisle { Spacer().frame(width: NexusSpacing.space8) }
                 seatButton(seat, segment: segment)
             }
-            Text("\(row.number)").font(.caption).frame(width: 24)
+            Text("\(row.number)").nexusTextStyle(NexusText.styles.caption).frame(width: NexusLayout.seatRowLabelWidth)
         }
     }
 
@@ -121,12 +121,13 @@ struct SeatSelectionScreen: View {
         let selected = viewModel.state.assignments.contains {
             $0.passengerIndex == viewModel.state.activePassengerIndex && $0.segmentId == segment.id && $0.seatNumber == seat.number
         }
-        let enabled = seat.status == .available || seat.status == .selected
+        let enabled = viewModel.state.eligiblePassengerIndices.contains(viewModel.state.activePassengerIndex)
+            && (seat.status == .available || seat.status == .selected)
         return Button { send(.seat(seat)) } label: {
             Text(selected ? "✓" : String(seat.number.filter(\.isLetter)))
-                .frame(minWidth: 44, minHeight: 44)
-                .background(selected ? Color.accentColor : enabled ? Color.secondary.opacity(0.12) : Color.secondary.opacity(0.35))
-                .foregroundStyle(selected ? .white : .primary).clipShape(.rect(cornerRadius: NexusRadius.sm))
+                .frame(minWidth: NexusLayout.touchMin, minHeight: NexusLayout.touchMin)
+                .background(selected ? NexusSemanticColors.brandPrimary : enabled ? NexusSemanticColors.surfaceMuted : NexusSemanticColors.disabledBg)
+                .foregroundStyle(selected ? NexusSemanticColors.actionPrimaryText : NexusSemanticColors.textPrimary).clipShape(.rect(cornerRadius: NexusRadius.sm))
         }
         .disabled(!enabled)
         .accessibilityLabel(seatAccessibility(seat, selected: selected, enabled: enabled))
@@ -144,19 +145,15 @@ struct SeatSelectionScreen: View {
 
     private var actions: some View {
         VStack(spacing: NexusSpacing.space8) {
-            HStack { Text("Seat fees"); Spacer(); Text(feeTotal.formatted).fontWeight(.semibold) }
-            Text("Seat selection is optional").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            if let total = viewModel.state.feeTotalLabel {
+                HStack { Text("Seat fees"); Spacer(); Text(total).fontWeight(.semibold) }
+            }
+            Text("Seat selection is optional").nexusTextStyle(NexusText.styles.caption).foregroundStyle(NexusSemanticColors.textSecondary).frame(maxWidth: .infinity, alignment: .leading)
             NexusPrimaryButton("Continue to review", isLoading: viewModel.state.saving, fillsWidth: true) { send(.continue) }
-        }.padding(NexusSpacing.space16).background(.regularMaterial)
+        }.padding(NexusSpacing.space16).background(NexusSemanticColors.surfaceElevated)
     }
 
-    private var feeTotal: Money {
-        let priced = viewModel.state.assignments.compactMap(\.price)
-        let currency = priced.first?.currency ?? "USD"
-        let amount = priced.reduce(0) { $0 + $1.amount }
-        return .init(amount: amount, currency: currency,
-                     formatted: String(format: "%@ %.2f", currency, Double(amount) / 100))
-    }
+
 }
 
 private extension Array { subscript(safe index: Index) -> Element? { indices.contains(index) ? self[index] : nil } }
