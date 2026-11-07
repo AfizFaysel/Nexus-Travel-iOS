@@ -418,7 +418,7 @@ struct HomeSearchPanel: View {
             if state.tripType == .multiCity { multiCityFields } else { standardFields }
             adaptiveFieldLayout {
                 field("Travelers", state.travelers.summary(), .profile, .travelersClicked, showsChevron: true)
-                Divider().overlay(NexusSemanticColors.borderDefault)
+                Divider().overlay(NexusSemanticColors.borderDecorative)
                 field("Cabin Class", state.cabinClass.label, .seat, .cabinClassClicked, showsChevron: true)
             }
             NexusPrimaryButton("Search Flights", isLoading: state.isSearching, loadingTitle: "Searching…", fillsWidth: true) { onEvent(.searchClicked) }
@@ -430,7 +430,7 @@ struct HomeSearchPanel: View {
             if !flat {
                 RoundedRectangle(cornerRadius: NexusRadius.xxxl)
                     .fill(NexusSemanticColors.surfaceElevated)
-                    .shadow(color: NexusSemanticColors.textPrimary.opacity(0.14), radius: NexusSpacing.space8, y: NexusSpacing.space4)
+                    .shadow(color: NexusSemanticColors.searchPanelShadow.opacity(0.14), radius: NexusSpacing.space8, y: NexusSpacing.space4)
             }
         }
     }
@@ -448,8 +448,8 @@ struct HomeSearchPanel: View {
         .frame(height: usesAccessibilityLayout ? nil : NexusLayout.touchRecommended)
         .background(NexusSemanticColors.surfaceBase)
         .clipShape(RoundedRectangle(cornerRadius: NexusRadius.xl))
-        .overlay { RoundedRectangle(cornerRadius: NexusRadius.xl).stroke(NexusSemanticColors.borderDefault) }
-        .shadow(color: NexusSemanticColors.textPrimary.opacity(0.12), radius: NexusSpacing.space4, y: NexusSpacing.space2)
+        .overlay { RoundedRectangle(cornerRadius: NexusRadius.xl).stroke(NexusSemanticColors.borderDecorative) }
+        .shadow(color: NexusSemanticColors.searchPanelShadow.opacity(0.12), radius: NexusSpacing.space4, y: NexusSpacing.space2)
     }
 
     private func tripTypeButton(_ title: String, type: TripType) -> some View {
@@ -465,7 +465,7 @@ struct HomeSearchPanel: View {
                 .background {
                     if state.tripType == type {
                         LinearGradient(
-                            colors: [NexusColors.blue600, NexusColors.blue700],
+                            colors: [NexusSemanticColors.selectionStart, NexusSemanticColors.selectionEnd],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -488,19 +488,19 @@ struct HomeSearchPanel: View {
                     .frame(width: NexusLayout.touchRecommended, height: NexusLayout.touchRecommended)
                     .background(NexusSemanticColors.surfaceBase)
                     .clipShape(Circle())
-                    .overlay { Circle().stroke(NexusSemanticColors.borderDefault) }
-                    .shadow(color: NexusSemanticColors.textPrimary.opacity(0.12), radius: NexusSpacing.space4, y: NexusSpacing.space2)
+                    .overlay { Circle().stroke(NexusSemanticColors.borderDecorative) }
+                    .shadow(color: NexusSemanticColors.searchPanelShadow.opacity(0.12), radius: NexusSpacing.space4, y: NexusSpacing.space2)
                 field("To", state.destination?.displayName ?? "Select destination", .flightArrival, .destinationClicked)
             }
-            Divider().overlay(NexusSemanticColors.borderDefault)
+            Divider().overlay(NexusSemanticColors.borderDecorative)
             adaptiveFieldLayout {
                 field("Departure", state.departureDate?.displayText ?? "Select date", .calendar, .departureDateClicked)
                 if state.tripType == .roundTrip {
-                    Divider().overlay(NexusSemanticColors.borderDefault)
+                    Divider().overlay(NexusSemanticColors.borderDecorative)
                     field("Return", state.returnDate?.displayText ?? "Select date", .calendar, .returnDateClicked)
                 }
             }
-            Divider().overlay(NexusSemanticColors.borderDefault)
+            Divider().overlay(NexusSemanticColors.borderDecorative)
         }
     }
 

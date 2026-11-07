@@ -23,7 +23,7 @@ struct NexusSearchField: View {
                     if showsChevron {
                         Spacer(minLength: 0)
                         NexusIcon(name: .chevronDown, size: NexusIconSize.formField)
-                            .foregroundStyle(NexusColors.slate700)
+                            .foregroundStyle(NexusSemanticColors.searchFieldChevron)
                     }
                 }
                 Text(value)
