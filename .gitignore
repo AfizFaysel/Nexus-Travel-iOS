@@ -6,3 +6,6 @@ xcuserdata/
 __pycache__/
 artifacts/
 TestResults*.xcresult/
+.env
+.env.*
+!.env.example

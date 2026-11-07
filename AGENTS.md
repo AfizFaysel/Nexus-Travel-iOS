@@ -1,6 +1,6 @@
 # Nexus Travel iOS — Agent Orchestration Entry Point
 
-Native SwiftUI rewrite of the Android app. The Android repo is the **behavioral ground truth** (read-only):
+Native SwiftUI rewrite of the Android app. The Android repo is the **behavioral ground truth**. Android changes are permitted when explicitly scoped by the user:
 
 ```
 C:\Users\Afiz\Desktop\Nexus-Travel-Android\app\src\main\java\com\nexustravel\app\
