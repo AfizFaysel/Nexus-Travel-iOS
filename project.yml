@@ -28,10 +28,6 @@ settings:
       COPY_PHASE_STRIP: YES
       DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
       ASSETCATALOG_COMPILER_OPTIMIZATION: space
-packages:
-  TablerIcons:
-    url: https://github.com/YazeedAlKhalaf/tabler-icons-swift.git
-    revision: 41cfb5218c63420fea0d729a843b1dadd404ae63
 targets:
   NexusTravel:
     type: application
@@ -48,8 +44,6 @@ targets:
     resources:
       - path: Sources/Core/DesignSystem/Resources/Icons
       - path: Sources/Core/DesignSystem/Resources/Images
-    dependencies:
-      - package: TablerIcons
     info:
       path: Sources/App/Info.plist
       properties:

@@ -1,5 +1,4 @@
 import SwiftUI
-import TablerIcons
 
 /// Icon families supported by the centralized product catalog.
 enum NexusIconSource: Equatable {
@@ -76,7 +75,7 @@ struct NexusPlatformIcon: View {
     @ViewBuilder var body: some View {
         switch name.source {
         case let .tabler(tablerName):
-            Image(uiImage: tablerName.image.withRenderingMode(.alwaysTemplate))
+            Image(tablerName.assetName)
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
@@ -289,7 +288,7 @@ struct NexusIcon: View {
                 .font(.system(size: size))
                 .frame(width: size, height: size)
         case let .tabler(tablerName):
-            Image(uiImage: tablerName.image.withRenderingMode(.alwaysTemplate))
+            Image(tablerName.assetName)
                 .renderingMode(.template)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -311,35 +310,36 @@ struct NexusIcon: View {
 }
 
 private extension NexusTablerIconName {
-    var image: UIImage {
+    /// The Tabler icon bundled in NexusIcons.xcassets (only the icons Nexus uses ship with the app).
+    var assetName: String {
         switch self {
-        case .home: TablerIcons.homeOutlined
-        case .user: TablerIcons.userOutlined
-        case .users: TablerIcons.usersOutlined
-        case .deviceMobile: TablerIcons.deviceMobileOutlined
-        case .sun: TablerIcons.sunOutlined
-        case .moon: TablerIcons.moonOutlined
-        case .chevronRight: TablerIcons.chevronRightOutlined
-        case .headset: TablerIcons.headsetOutlined
-        case .phone: TablerIcons.phoneOutlined
-        case .mail: TablerIcons.mailOutlined
-        case .wallet: TablerIcons.walletOutlined
-        case .calendar: TablerIcons.calendarOutlined
-        case .plane: TablerIcons.planeOutlined
-        case .planeDeparture: TablerIcons.planeDepartureOutlined
-        case .planeArrival: TablerIcons.planeArrivalOutlined
-        case .buildings: TablerIcons.buildingsOutlined
-        case .car: TablerIcons.carOutlined
-        case .map: TablerIcons.mapOutlined
-        case .mapPin: TablerIcons.mapPinOutlined
-        case .armchair: TablerIcons.armchairOutlined
-        case .briefcase: TablerIcons.briefcaseOutlined
-        case .ticket: TablerIcons.ticketOutlined
-        case .qrCode: TablerIcons.qrcodeOutlined
-        case .airport: TablerIcons.buildingAirportOutlined
-        case .creditCard: TablerIcons.creditCardOutlined
-        case .eye: TablerIcons.eyeOutlined
-        case .eyeOff: TablerIcons.eyeOffOutlined
+        case .home: "home-outlined"
+        case .user: "user-outlined"
+        case .users: "users-outlined"
+        case .deviceMobile: "device-mobile-outlined"
+        case .sun: "sun-outlined"
+        case .moon: "moon-outlined"
+        case .chevronRight: "chevron-right-outlined"
+        case .headset: "headset-outlined"
+        case .phone: "phone-outlined"
+        case .mail: "mail-outlined"
+        case .wallet: "wallet-outlined"
+        case .calendar: "calendar-outlined"
+        case .plane: "plane-outlined"
+        case .planeDeparture: "plane-departure-outlined"
+        case .planeArrival: "plane-arrival-outlined"
+        case .buildings: "buildings-outlined"
+        case .car: "car-outlined"
+        case .map: "map-outlined"
+        case .mapPin: "map-pin-outlined"
+        case .armchair: "armchair-outlined"
+        case .briefcase: "briefcase-outlined"
+        case .ticket: "ticket-outlined"
+        case .qrCode: "qrcode-outlined"
+        case .airport: "building-airport-outlined"
+        case .creditCard: "credit-card-outlined"
+        case .eye: "eye-outlined"
+        case .eyeOff: "eye-off-outlined"
         }
     }
 }
