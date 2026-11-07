@@ -362,6 +362,8 @@ struct EditSearchSheet: View {
     let today: LocalDate
     let title: String
     let onEvent: (HomeUiEvent) -> Void
+    @State private var contentHeight = NexusLayout.homeChoiceSheetInitialHeight
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         ScrollView {
@@ -372,11 +374,13 @@ struct EditSearchSheet: View {
                     .accessibilityAddTraits(.isHeader)
                 HomeSearchPanel(state: state, onEvent: onEvent, cardPadding: 0, flat: true)
             }
-            .padding(.horizontal, NexusSpacing.space20)
-            .padding(.top, NexusSpacing.space24)
-            .padding(.bottom, NexusSpacing.space24)
+            .padding(NexusSpacing.space24)
+            // Size the sheet to its content, as Home's picker sheets do; multi-city grows it and long content scrolls.
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { contentHeight = $0 } }
         }
+        .scrollBounceBehavior(.basedOnSize)
         .background(NexusSemanticColors.surfaceBase)
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.height(contentHeight), .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(NexusSemanticColors.surfaceBase)
         .presentationCornerRadius(NexusRadius.xxxl)
@@ -412,9 +416,14 @@ struct HomeSearchPanel: View {
         }
         .padding(flat ? 0 : cardPadding)
         .frame(maxWidth: .infinity)
-        .background(flat ? Color.clear : NexusSemanticColors.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: NexusRadius.xxxl))
-        .shadow(color: NexusSemanticColors.textPrimary.opacity(flat ? 0 : 0.14), radius: NexusSpacing.space8, y: NexusSpacing.space4)
+        .background {
+            // Flat (in a sheet) has no card, so nothing clips the selector's shadow or the button's corners.
+            if !flat {
+                RoundedRectangle(cornerRadius: NexusRadius.xxxl)
+                    .fill(NexusSemanticColors.surfaceElevated)
+                    .shadow(color: NexusSemanticColors.textPrimary.opacity(0.14), radius: NexusSpacing.space8, y: NexusSpacing.space4)
+            }
+        }
     }
 
     private var tripTypeSelector: some View {
