@@ -49,6 +49,69 @@ struct HomeViewModelTests {
         #expect(model.uiState.activeSheet == .originAirport)
     }
 
+    @Test func bookedTripPrefillKeepsTravelersAndFutureDatesWithoutSearching() async throws {
+        let spy = RequestSpySearchRepository()
+        let model = makeModel(searchRepository: spy)
+        let departure = try #require(today.addingDays(10))
+        let request = try #require(FlightSearchRequest.make(
+            tripType: .roundTrip, originCode: "ADD", destinationCode: "DXB",
+            departureDate: departure, returnDate: departure.addingDays(5),
+            travelers: TravelerCounts(adults: 2, children: 1, infants: 1), cabinClass: .business,
+            childAges: [8], infantAges: [1]
+        ))
+
+        try await model.prefillSearch(request)
+
+        #expect(model.uiState.origin == add)
+        #expect(model.uiState.destination == dxb)
+        #expect(model.uiState.tripType == .roundTrip)
+        #expect(model.uiState.departureDate == departure)
+        #expect(model.uiState.returnDate == departure.addingDays(5))
+        #expect(model.uiState.travelers == TravelerCounts(adults: 2, children: 1, infants: 1))
+        #expect(model.uiState.childAges == [8])
+        #expect(model.uiState.cabinClass == .business)
+        #expect(!model.uiState.isSearching)
+        #expect(await spy.lastRequest == nil)
+    }
+
+    @Test func bookedTripPrefillClearsDatesThatHavePassed() async throws {
+        let model = makeModel()
+        let past = try #require(today.addingDays(-1))
+        let request = try #require(FlightSearchRequest.make(
+            tripType: .roundTrip, originCode: "ADD", destinationCode: "DXB",
+            departureDate: past, returnDate: today.addingDays(3),
+            travelers: TravelerCounts(adults: 1, children: 0, infants: 0), cabinClass: .economy
+        ))
+
+        try await model.prefillSearch(request)
+
+        #expect(model.uiState.destination == dxb)
+        #expect(model.uiState.departureDate == nil)
+        #expect(model.uiState.returnDate == nil)
+    }
+
+    @Test func seededEditorStartsFromDraftAndRestoresIntoHome() async throws {
+        let home = makeModel()
+        try await home.load()
+        let editor = HomeViewModel(
+            homeRepository: StubHomeRepository(result: .unknownError),
+            airportRepository: StubAirportRepository(airports: [add, dxb]),
+            flightSearchRepository: StubFlightSearchRepository(result: .unknownError),
+            authRepository: StubAuthRepository(displayName: nil),
+            today: { self.today },
+            initialState: home.uiState
+        )
+        try await editor.loadIfNeeded()
+        #expect(editor.uiState == home.uiState)
+
+        await editor.onEvent(.cabinClassChanged(.first))
+        home.restoreSearchDraft(editor.uiState)
+
+        #expect(home.uiState.cabinClass == .first)
+        #expect(home.uiState.activeSheet == nil)
+        #expect(!home.uiState.isSearching)
+    }
+
     @Test func loadIfNeededKeepsEditedFormStateAfterInitialLoad() async throws {
         let model = makeModel()
 

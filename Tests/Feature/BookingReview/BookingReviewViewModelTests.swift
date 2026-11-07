@@ -282,6 +282,61 @@ struct BookingReviewViewModelTests {
         #expect(!viewModel.state.isCheckingStatus)
     }
 
+    @Test func reservedFlightOffersANewSearchAndLeavesToTrips() async throws {
+        let viewModel = try await reservedViewModel()
+
+        viewModel.searchAnotherFlight()
+        viewModel.back()
+
+        #expect(viewModel.consumeNavigation() == .searchAnotherFlight)
+        #expect(viewModel.consumeNavigation() == .trips)
+    }
+
+    @Test func unknownOutcomeNeverOffersANewSearchAndLeavesToTrips() async throws {
+        let repository = BookingReviewFakeRepository(review: .success(Self.details), submits: [.outcomeUnknown])
+        let viewModel = BookingReviewViewModel(reviewId: "b-1", repository: repository, idempotencyKey: "stable")
+        try await viewModel.load()
+        try await viewModel.submit()
+        #expect(viewModel.state.bookingOutcomeUnknown)
+
+        viewModel.searchAnotherFlight()
+        viewModel.back()
+
+        #expect(viewModel.consumeNavigation() == .trips)
+        #expect(viewModel.consumeNavigation() == nil)
+    }
+
+    @Test func draftReviewBackStillReturnsToTheFlow() async throws {
+        let viewModel = BookingReviewViewModel(
+            reviewId: "b-1", repository: BookingReviewFakeRepository(review: .success(Self.details), submits: [])
+        )
+        try await viewModel.load()
+
+        viewModel.searchAnotherFlight()
+        viewModel.back()
+
+        #expect(viewModel.consumeNavigation() == .back)
+        #expect(viewModel.consumeNavigation() == nil)
+    }
+
+    private func reservedViewModel() async throws -> BookingReviewViewModel {
+        let confirmed = BookingReviewDetails(
+            reviewId: Self.details.reviewId, bookingReference: "ABC123", status: .submittedForManualReview,
+            passengers: Self.details.passengers, contact: Self.details.contact, seats: Self.details.seats,
+            fareTotal: Self.details.fareTotal
+        )
+        let viewModel = BookingReviewViewModel(
+            reviewId: "b-1", repository: BookingReviewFakeRepository(
+                review: .success(confirmed), submits: [],
+                status: .success(.init(outcome: .held, bookingReference: "ABC123",
+                                       allowedNextActions: [.uploadPaymentProof, .viewTrip]))
+            )
+        )
+        try await viewModel.load()
+        #expect(viewModel.state.screenState == .submitted)
+        return viewModel
+    }
+
     @Test func statusCheckRecognizesSubmittedBooking() async throws {
         let confirmed = BookingReviewDetails(
             reviewId: Self.details.reviewId, bookingReference: "ABC123", status: .submittedForManualReview,
