@@ -33,13 +33,11 @@ struct BookingReviewScreenRoute: View {
         BookingReviewScreen(viewModel: viewModel, flightDetails: flightDetails, send: send)
             .task { do { try await viewModel.load() } catch is CancellationError { return } catch { return } }
             .onDisappear { eventTask?.cancel(); prefillTask?.cancel() }
-            .sheet(isPresented: Binding(get: { searchEditor != nil }, set: { if !$0 { searchEditor = nil } })) {
-                if let editor = searchEditor {
-                    // Closing the sheet keeps the reservation and its payment step on screen.
-                    EditSearchSheetRoute(viewModel: editor, title: "Search flights") { searchId in
-                        searchEditor = nil
-                        onAnotherFlightResults(searchId, editor.uiState)
-                    }
+            .sheet(item: $searchEditor) { editor in
+                // Closing the sheet keeps the reservation and its payment step on screen.
+                EditSearchSheetRoute(viewModel: editor, title: "Search flights") { searchId in
+                    searchEditor = nil
+                    onAnotherFlightResults(searchId, editor.uiState)
                 }
             }
             .onChange(of: scenePhase) { _, phase in
@@ -83,16 +81,22 @@ struct BookingReviewScreenRoute: View {
     }
     private func openSearchEditor() {
         let editor = makeSearchEditor()
-        searchEditor = editor
-        guard let flightDetails else { return }
         // Keep the draft's exact child and infant ages when it describes the same travelers.
-        let sameTravelers = editor.uiState.travelers == flightDetails.travelers
-        guard let request = flightDetails.anotherFlightSearch(
+        let sameTravelers = flightDetails.map { editor.uiState.travelers == $0.travelers } ?? false
+        guard let request = flightDetails?.anotherFlightSearch(
             childAges: sameTravelers ? editor.uiState.childAges : nil,
             infantAges: sameTravelers ? editor.uiState.infantAges : nil
-        ) else { return }
+        ) else {
+            searchEditor = editor
+            return
+        }
         prefillTask?.cancel()
-        prefillTask = Task { try? await editor.prefillSearch(request) }
+        // Present only after prefilling, so the lookup can never overwrite fields the user is already editing.
+        prefillTask = Task {
+            try? await editor.prefillSearch(request)
+            guard !Task.isCancelled else { return }
+            searchEditor = editor
+        }
     }
 }
 

@@ -419,6 +419,9 @@ final class HomeViewModel {
     }
 }
 
+/// Identity lets an editor drive `.sheet(item:)`; each editor is its own presentation.
+extension HomeViewModel: Identifiable {}
+
 func greetingName(_ displayName: String?) -> String {
     displayName?.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? "Traveler"
 }

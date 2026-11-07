@@ -22,12 +22,10 @@ struct SearchResultsScreenRoute: View {
 
     var body: some View {
         SearchResultsScreen(state: viewModel.uiState, onEvent: send)
-            .sheet(isPresented: Binding(get: { searchEditor != nil }, set: { if !$0 { searchEditor = nil } })) {
-                if let editor = searchEditor {
-                    EditSearchSheetRoute(viewModel: editor) { searchId in
-                        searchEditor = nil
-                        onEditedSearchResults(searchId, editor.uiState)
-                    }
+            .sheet(item: $searchEditor) { editor in
+                EditSearchSheetRoute(viewModel: editor) { searchId in
+                    searchEditor = nil
+                    onEditedSearchResults(searchId, editor.uiState)
                 }
             }
             .task {
