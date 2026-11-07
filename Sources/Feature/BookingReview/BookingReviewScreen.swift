@@ -32,6 +32,7 @@ struct BookingReviewScreenRoute: View {
     var body: some View {
         BookingReviewScreen(viewModel: viewModel, flightDetails: flightDetails, send: send)
             .task { do { try await viewModel.load() } catch is CancellationError { return } catch { return } }
+            .task(id: viewModel.isAfterBookingAttempt) { await viewModel.loadTrip() }
             .onDisappear { eventTask?.cancel(); prefillTask?.cancel() }
             .sheet(item: $searchEditor) { editor in
                 // Closing the sheet keeps the reservation and its payment step on screen.
@@ -189,18 +190,15 @@ struct BookingReviewScreen: View {
             LazyVStack(alignment: .leading, spacing: NexusSpacing.space16) {
                 // A pending outcome leads with its status, as Android's pending layout does; the details follow for reference.
                 if viewModel.state.bookingOutcomeUnknown {
-                    Text("We’re confirming your reservation")
-                        .nexusTextStyle(NexusText.styles.screenTitle)
-                        .foregroundStyle(NexusSemanticColors.textHeading)
-                        .accessibilityAddTraits(.isHeader)
-                    feedback
-                }
-                if let flightDetails {
+                    outcomeTop { feedback }
+                } else if let flightDetails {
                     Text("\(flightDetails.originCode) → \(flightDetails.destinationCode)").font(.title2.bold())
                     Text("\(flightDetails.departureDate.reviewLabel) · \(flightDetails.travelers.summary()) · \(flightDetails.cabinLabel)").foregroundStyle(.secondary)
                 }
                 if let details = viewModel.state.details {
-                    notice(details.status.label, statusMessage(details.status))
+                    if !viewModel.state.bookingOutcomeUnknown {
+                        notice(details.status.label, statusMessage(details.status))
+                    }
                     section("Passenger details", rows: details.passengers.enumerated().flatMap { index, passenger in
                         [(index == 0 ? "Passenger" : "Passenger \(index + 1)", "\(passenger.title) \(passenger.firstName) \(passenger.lastName)"),
                          ("Passport", passenger.passportNumber), ("Nationality", passenger.nationality)]
@@ -219,14 +217,43 @@ struct BookingReviewScreen: View {
         }
     }
 
+    /// The top of the success and pending states, reusing Trip details: route heading, status banner, itinerary.
+    /// Until the trip loads (or if it can't), the booked flight's own route stands in.
+    @ViewBuilder private func outcomeTop<Banner: View>(@ViewBuilder banner: () -> Banner) -> some View {
+        if let trip = viewModel.state.trip {
+            TripRouteHeader(trip: trip)
+        } else if let flightDetails {
+            VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+                Text("\(flightDetails.originCode) → \(flightDetails.destinationCode)")
+                    .nexusTextStyle(NexusText.styles.screenTitle)
+                    .foregroundStyle(NexusSemanticColors.textHeading)
+                    .accessibilityAddTraits(.isHeader)
+                Text("\(flightDetails.departureDate.reviewLabel) · \(flightDetails.travelers.summary())")
+                    .nexusTextStyle(NexusText.styles.bodySmall)
+                    .foregroundStyle(NexusSemanticColors.textSecondary)
+            }
+        }
+        banner()
+        if let trip = viewModel.state.trip {
+            TripItinerary(trip: trip)
+            Rectangle()
+                .fill(NexusSemanticColors.borderSubtle)
+                .frame(height: NexusBorder.hairline)
+                .accessibilityHidden(true)
+        }
+    }
+
     @ViewBuilder private var feedback: some View {
         if let message = viewModel.state.message {
             // Pending outcomes are amber, matching Android; no new search is offered while the airline may still hold seats.
+            let status: NexusStatus = viewModel.state.bookingOutcomeUnknown ? .warning : .error
             NexusFeedbackPanel(
                 title: feedbackTitle, message: message,
-                status: viewModel.state.bookingOutcomeUnknown ? .warning : .error,
+                status: status,
                 primaryActionLabel: feedbackActionLabel,
-                onPrimaryAction: feedbackAction
+                onPrimaryAction: feedbackAction,
+                icon: status.feedbackIcon,
+                compact: viewModel.state.bookingOutcomeUnknown
             )
             if viewModel.state.isCheckingStatus { ProgressView("Checking booking status…") }
             if viewModel.state.isRepricing { ProgressView("Checking current fare…") }
@@ -244,28 +271,23 @@ struct BookingReviewScreen: View {
         let reserved = viewModel.state.canUploadProof
         return ScrollView {
             VStack(alignment: .leading, spacing: NexusSpacing.space16) {
-                Text(reserved ? "Your flight is reserved" : "Booking update")
-                    .nexusTextStyle(NexusText.styles.screenTitle)
-                    .foregroundStyle(NexusSemanticColors.textHeading)
-                    .accessibilityAddTraits(.isHeader)
-                if let flightDetails {
-                    VStack(alignment: .leading, spacing: NexusSpacing.space4) {
-                        Text("\(flightDetails.originCode) → \(flightDetails.destinationCode)").font(.title3.bold())
-                        Text("\(flightDetails.departureDate.reviewLabel) · \(flightDetails.travelers.summary()) · \(flightDetails.cabinLabel)")
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityElement(children: .combine)
+                outcomeTop {
+                    NexusFeedbackPanel(
+                        title: reserved ? "Reservation confirmed" : "Booking status updated",
+                        message: reserved
+                            ? "The airline is holding your flight. Pay by bank transfer and upload your receipt so we can verify payment and issue your ticket."
+                            : "Check Trips for payment and ticket updates.",
+                        status: reserved ? .success : .info,
+                        icon: (reserved ? NexusStatus.success : .info).feedbackIcon,
+                        compact: true
+                    )
                 }
-                NexusFeedbackPanel(
-                    title: reserved ? "Reservation confirmed" : "Booking status updated",
-                    message: reserved
-                        ? "The airline is holding your flight. Pay by bank transfer and upload your receipt so we can verify payment and issue your ticket."
-                        : "Check Trips for payment and ticket updates.",
-                    status: reserved ? .success : .info
-                )
                 if let details = viewModel.state.details {
                     section(nil, rows: (details.bookingReference.map { [("Booking reference", $0)] } ?? [])
                         + [("Total", details.fareTotal.formatted)])
+                }
+                if reserved, let deadline = viewModel.state.trip?.bookingDeadlineLabel {
+                    NexusInlineStatusBanner(text: "Pay by \(deadline)", status: .warning, icon: .clock)
                 }
                 if let checkedAt = lastSupplierCheckLabel {
                     Text(checkedAt).font(.caption).foregroundStyle(.secondary)

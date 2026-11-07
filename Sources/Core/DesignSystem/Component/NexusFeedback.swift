@@ -50,11 +50,12 @@ struct NexusInlineStatusBanner: View {
     let text: String
     let status: NexusStatus
     var onRetry: (() -> Void)?
+    var icon: NexusIconName?
 
     var body: some View {
         let colors = status.inlineColors
         HStack(spacing: NexusSpacing.space8) {
-            NexusIcon(name: status == .offline ? .offline : .error, size: NexusIconSize.sm)
+            NexusIcon(name: icon ?? (status == .offline ? .offline : .error), size: NexusIconSize.sm)
                 .accessibilityHidden(true)
             Text(text)
                 .nexusTextStyle(NexusText.styles.bodySmall)

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import NexusTravel
 
@@ -319,7 +320,24 @@ struct BookingReviewViewModelTests {
         #expect(viewModel.consumeNavigation() == nil)
     }
 
-    private func reservedViewModel() async throws -> BookingReviewViewModel {
+    @Test func bookingAttemptLoadsItsTripForTheSuccessLayout() async throws {
+        let trips = SingleTripRepository()
+        let draft = BookingReviewViewModel(
+            reviewId: "b-1", repository: BookingReviewFakeRepository(review: .success(Self.details), submits: []),
+            tripsRepository: trips
+        )
+        try await draft.load()
+        await draft.loadTrip()
+        #expect(draft.state.trip == nil)
+
+        let reserved = try await reservedViewModel(tripsRepository: trips)
+        await reserved.loadTrip()
+
+        #expect(await trips.requested == ["b-1"])
+        #expect(reserved.state.trip?.id == "b-1")
+    }
+
+    private func reservedViewModel(tripsRepository: (any TripsRepository)? = nil) async throws -> BookingReviewViewModel {
         let confirmed = BookingReviewDetails(
             reviewId: Self.details.reviewId, bookingReference: "ABC123", status: .submittedForManualReview,
             passengers: Self.details.passengers, contact: Self.details.contact, seats: Self.details.seats,
@@ -330,7 +348,8 @@ struct BookingReviewViewModelTests {
                 review: .success(confirmed), submits: [],
                 status: .success(.init(outcome: .held, bookingReference: "ABC123",
                                        allowedNextActions: [.uploadPaymentProof, .viewTrip]))
-            )
+            ),
+            tripsRepository: tripsRepository
         )
         try await viewModel.load()
         #expect(viewModel.state.screenState == .submitted)
@@ -485,4 +504,22 @@ private actor BookingStatusCheckGate {
         releaseContinuation?.resume()
         releaseContinuation = nil
     }
+}
+
+private actor SingleTripRepository: TripsRepository {
+    private(set) var requested: [String] = []
+    func trips(view: TripView, forceRefresh: Bool, cursor: String?) async throws -> TripPageState { .loading }
+    func requestSupplierRefresh(bookingIDs: [String]) async throws -> TripSupplierRefreshResult { .accepted(pending: false) }
+    func tripDetail(id: String, forceRefresh: Bool) async throws -> TripDetailResult {
+        requested.append(id)
+        return .success(CustomerTrip(
+            id: id, group: .actionRequired, status: "BOOKING_HELD", paymentStatus: "UNPAID",
+            paymentProofStatus: "MISSING", ticketingStatus: "NOT_STARTED", amountMinor: nil, currency: nil,
+            holdExpiresAt: "2027-10-10T18:03:00Z", ticketDocumentAvailable: false,
+            nextAction: "UPLOAD_PAYMENT_PROOF", createdAt: "2026-10-01T10:00:00Z", itineraryLabel: "ADD to DXB"
+        ))
+    }
+    func resolveTicketDocument(id: String) async throws -> TicketDocumentResult { .unavailable }
+    func cachedTicketPdf(id: String, version: String?) async throws -> CachedTicketResult? { nil }
+    func cacheTicketPdf(id: String, downloadURL: URL, version: String?) async throws -> CachedTicketResult { .unknownError }
 }

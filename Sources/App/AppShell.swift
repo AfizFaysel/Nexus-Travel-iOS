@@ -409,7 +409,8 @@ private struct AppDestinations: ViewModifier {
                 )
             case let .bookingReview(route):
                 BookingReviewScreenRoute(
-                    viewModel: BookingReviewViewModel(reviewId: route.reviewId, repository: bookingRequestRepository),
+                    viewModel: BookingReviewViewModel(reviewId: route.reviewId, repository: bookingRequestRepository,
+                                                      tripsRepository: tripsRepository),
                     flightDetails: bookingFlowState.passengerDetails,
                     router: router,
                     onSearchAgain: onSearchAgain,

@@ -23,15 +23,46 @@ extension CustomerTrip {
     }
 }
 
-struct TripStatusHeader: View {
+extension NexusStatus {
+    /// The icon a status banner shows for this tone; neutral tones show none.
+    var feedbackIcon: NexusIconName? {
+        switch self {
+        case .success: .check
+        case .info: .clock
+        case .warning: .warning
+        default: nil
+        }
+    }
+}
+
+/// The trip's route as the screen heading, with its date and traveler count underneath.
+struct TripRouteHeader: View {
     let trip: CustomerTrip
-    let notice: String
 
     private var metadata: String {
         let date = trip.summary?.dateLabel ?? trip.segments.first?.departureDate.flatMap(TripSummary.dateLabel)
         let travelers = trip.detail?.travelerCount.map { "\($0) \($0 == 1 ? "traveler" : "travelers")" }
         return [date, travelers].compactMap { $0 }.joined(separator: " · ")
     }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+            Text(trip.summary?.route.label ?? trip.itineraryLabel)
+                .nexusTextStyle(NexusText.styles.screenTitle)
+                .foregroundStyle(NexusSemanticColors.textHeading)
+                .accessibilityAddTraits(.isHeader)
+            if !metadata.isEmpty {
+                Text(metadata)
+                    .nexusTextStyle(NexusText.styles.bodySmall)
+                    .foregroundStyle(NexusSemanticColors.textSecondary)
+            }
+        }
+    }
+}
+
+struct TripStatusHeader: View {
+    let trip: CustomerTrip
+    let notice: String
 
     private var message: String {
         var lines = [notice]
@@ -45,29 +76,13 @@ struct TripStatusHeader: View {
 
     var body: some View {
         let status = trip.feedbackStatus
-        let icon: NexusIconName? = switch status {
-        case .success: .check
-        case .info: .clock
-        case .warning: .warning
-        default: nil
-        }
         VStack(alignment: .leading, spacing: NexusSpacing.space12) {
-            VStack(alignment: .leading, spacing: NexusSpacing.space4) {
-                Text(trip.summary?.route.label ?? trip.itineraryLabel)
-                    .nexusTextStyle(NexusText.styles.screenTitle)
-                    .foregroundStyle(NexusSemanticColors.textHeading)
-                    .accessibilityAddTraits(.isHeader)
-                if !metadata.isEmpty {
-                    Text(metadata)
-                        .nexusTextStyle(NexusText.styles.bodySmall)
-                        .foregroundStyle(NexusSemanticColors.textSecondary)
-                }
-            }
+            TripRouteHeader(trip: trip)
             NexusFeedbackPanel(
                 title: trip.detailStatusCopy?.title ?? trip.bookingStatusLabel,
                 message: message,
                 status: status,
-                icon: icon,
+                icon: status.feedbackIcon,
                 compact: true
             )
         }

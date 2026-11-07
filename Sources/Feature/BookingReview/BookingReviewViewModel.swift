@@ -14,6 +14,8 @@ struct BookingReviewUiState: Equatable, Sendable {
     var allowedNextActions: [BookingStatusAction] = []
     var pendingPriceQuote: BookingPriceQuote?
     var isRepricing = false; var isAcceptingPrice = false
+    /// The saved trip after a hold was requested; nil until loaded or when it can't be loaded.
+    var trip: CustomerTrip?
 }
 enum BookingReviewNavigation: Equatable, Sendable {
     case back, home, trips, chooseAnotherFlight, searchAnotherFlight, payment(String), trip(String)
@@ -26,13 +28,22 @@ final class BookingReviewViewModel {
     private let idempotencyKeyOverride: String?; private var navigation: [BookingReviewNavigation] = []
     private let statusPollingLimit: Int
     private let statusPollingInterval: Duration
+    private let tripsRepository: (any TripsRepository)?
     init(reviewId: String, repository: any BookingRequestRepository,
          idempotencyKey: String? = nil, statusPollingLimit: Int = 5,
-         statusPollingInterval: Duration = .seconds(1)) {
+         statusPollingInterval: Duration = .seconds(1), tripsRepository: (any TripsRepository)? = nil) {
         self.reviewId = reviewId; self.repository = repository
         self.idempotencyKeyOverride = idempotencyKey
         self.statusPollingLimit = max(statusPollingLimit, 0)
         self.statusPollingInterval = statusPollingInterval
+        self.tripsRepository = tripsRepository
+    }
+    /// Loads the saved trip once a hold was requested, so success and pending can reuse the Trips layout.
+    func loadTrip() async {
+        guard isAfterBookingAttempt, state.trip == nil, let tripsRepository else { return }
+        guard case let .success(trip)? = try? await tripsRepository.tripDetail(id: reviewId, forceRefresh: true),
+              !Task.isCancelled else { return }
+        state.trip = trip
     }
     func load() async throws {
         let previous = state
