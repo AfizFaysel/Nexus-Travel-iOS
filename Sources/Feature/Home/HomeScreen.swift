@@ -184,7 +184,7 @@ struct HomeScreen: View {
     private func heroBackground(_ metrics: HomeHeroMetrics) -> some View {
         let asset = NexusThemeAssets.homeHero(dark: colorScheme == .dark)
         return Group {
-            if let path = Bundle.main.path(forResource: asset, ofType: "png"),
+            if let path = Bundle.main.path(forResource: asset, ofType: "jpg"),
                let image = UIImage(contentsOfFile: path) {
                 Image(uiImage: image)
                     .resizable()

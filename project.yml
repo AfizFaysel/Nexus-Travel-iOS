@@ -12,6 +12,22 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     SWIFT_APPROACHABLE_CONCURRENCY: YES
+  configs:
+    # Release favors download and install size: optimize for size, strip symbols into the dSYM,
+    # drop unreferenced code, and compress asset catalogs for space.
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: -Osize
+      SWIFT_COMPILATION_MODE: wholemodule
+      GCC_OPTIMIZATION_LEVEL: s
+      LLVM_LTO: YES_THIN
+      DEAD_CODE_STRIPPING: YES
+      DEPLOYMENT_POSTPROCESSING: YES
+      STRIP_INSTALLED_PRODUCT: YES
+      STRIP_STYLE: all
+      STRIP_SWIFT_SYMBOLS: YES
+      COPY_PHASE_STRIP: YES
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+      ASSETCATALOG_COMPILER_OPTIMIZATION: space
 packages:
   TablerIcons:
     url: https://github.com/YazeedAlKhalaf/tabler-icons-swift.git
