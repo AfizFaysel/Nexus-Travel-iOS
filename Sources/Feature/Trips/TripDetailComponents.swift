@@ -1,33 +1,75 @@
 import SwiftUI
 
+extension CustomerTrip {
+    var feedbackStatus: NexusStatus {
+        let state = summary?.presentation?.state
+        if detail?.abandonedAt != nil || state == "ABANDONED" {
+            return switch abandonmentState {
+            case .closed, .cancelled: .error
+            case .supportReview: .warning
+            default: .info
+            }
+        }
+        if let state, ["PREPARING_DOCUMENT", "TICKET_READY", "PAST"].contains(state),
+           presentedDetailAction == .getHelp { return .warning }
+        return switch state {
+        case "TICKET_READY": .success
+        case "CONFIRMING", "PAYMENT_UNDER_REVIEW", "PREPARING_TICKET", "PREPARING_DOCUMENT": .info
+        case "PAYMENT_NEEDED", "PAYMENT_PROOF_REJECTED", "TICKET_DELAYED",
+             "PAID_NEEDS_ATTENTION", "FLIGHT_CHANGED", "HOLD_CHANGED": .warning
+        case "HOLD_FAILED", "UNPAID_EXPIRED", "CANCELLED": .error
+        default: .empty
+        }
+    }
+}
+
 struct TripStatusHeader: View {
     let trip: CustomerTrip
     let notice: String
 
+    private var metadata: String {
+        let date = trip.summary?.dateLabel ?? trip.segments.first?.departureDate.flatMap(TripSummary.dateLabel)
+        let travelers = trip.detail?.travelerCount.map { "\($0) \($0 == 1 ? "traveler" : "travelers")" }
+        return [date, travelers].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private var message: String {
+        var lines = [notice]
+        if trip.summary?.showsVerifiedPayment == true { lines.append("Payment verified") }
+        if let reason = trip.verificationReasonLabel { lines.append(reason) }
+        if trip.summary?.showsDeadline == true, let deadline = trip.bookingDeadlineLabel {
+            lines.append("Booking deadline: \(deadline)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: NexusSpacing.space8) {
-            Text(trip.detailStatusCopy?.title ?? trip.bookingStatusLabel)
-                .nexusTextStyle(NexusText.styles.screenTitle)
-                .foregroundStyle(NexusSemanticColors.textHeading)
-                .accessibilityAddTraits(.isHeader)
-            Text(notice)
-                .nexusTextStyle(NexusText.styles.body)
-                .foregroundStyle(NexusSemanticColors.textSecondary)
-            if trip.summary?.showsVerifiedPayment == true {
-                Text("Payment verified")
-                    .nexusTextStyle(NexusText.styles.tripStatus)
-                    .foregroundStyle(NexusSemanticColors.brandPrimary)
+        let status = trip.feedbackStatus
+        let icon: NexusIconName? = switch status {
+        case .success: .check
+        case .info: .clock
+        case .warning: .warning
+        default: nil
+        }
+        VStack(alignment: .leading, spacing: NexusSpacing.space12) {
+            VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+                Text(trip.summary?.route.label ?? trip.itineraryLabel)
+                    .nexusTextStyle(NexusText.styles.screenTitle)
+                    .foregroundStyle(NexusSemanticColors.textHeading)
+                    .accessibilityAddTraits(.isHeader)
+                if !metadata.isEmpty {
+                    Text(metadata)
+                        .nexusTextStyle(NexusText.styles.bodySmall)
+                        .foregroundStyle(NexusSemanticColors.textSecondary)
+                }
             }
-            if let reason = trip.verificationReasonLabel {
-                Text(reason)
-                    .nexusTextStyle(NexusText.styles.bodySmall)
-                    .foregroundStyle(NexusSemanticColors.textSecondary)
-            }
-            if trip.summary?.showsDeadline == true, let deadline = trip.bookingDeadlineLabel {
-                Text("Booking deadline: \(deadline)")
-                    .nexusTextStyle(NexusText.styles.bodySmall)
-                    .foregroundStyle(NexusSemanticColors.textPrimary)
-            }
+            NexusFeedbackPanel(
+                title: trip.detailStatusCopy?.title ?? trip.bookingStatusLabel,
+                message: message,
+                status: status,
+                icon: icon,
+                compact: true
+            )
         }
     }
 }
@@ -39,12 +81,13 @@ struct TripItinerary: View {
     let logoURL: URL?
     let departureDate: String
     let travelerCount: Int?
+    let showsTripMetadata: Bool
 
     init(trip: CustomerTrip) {
-        self.init(segments: trip.segments, summary: trip.summary, travelerCount: trip.detail?.travelerCount)
+        self.init(segments: trip.segments, summary: trip.summary, travelerCount: trip.detail?.travelerCount, showsTripMetadata: false)
     }
 
-    init(segments: [TripSegment], summary: TripSummary? = nil, travelerCount: Int? = nil) {
+    init(segments: [TripSegment], summary: TripSummary? = nil, travelerCount: Int? = nil, showsTripMetadata: Bool = true) {
         self.segments = segments
         airline = summary?.airline ?? segments.first?.airline
         carrier = summary?.carrier ?? segments.first?.carrier
@@ -53,6 +96,7 @@ struct TripItinerary: View {
             ?? segments.first?.departureDate.flatMap(TripSummary.dateLabel)
             ?? "Departure date unavailable"
         self.travelerCount = travelerCount
+        self.showsTripMetadata = showsTripMetadata
     }
 
     var body: some View {
@@ -69,8 +113,8 @@ struct TripItinerary: View {
                     Text(airline ?? carrier ?? "Airline unavailable")
                         .nexusTextStyle(NexusText.styles.listTitleLarge)
                         .foregroundStyle(NexusSemanticColors.textHeading)
-                    note(departureDate)
-                    if let travelerCount {
+                    if showsTripMetadata { note(departureDate) }
+                    if showsTripMetadata, let travelerCount {
                         note("\(travelerCount) \(travelerCount == 1 ? "traveler" : "travelers")")
                     }
                 }
@@ -150,19 +194,31 @@ struct BookingProgress: View {
         ]
     }
 
+    private let pendingSteps = ["Flight reservation", "Payment verification", "Ticket issuance"]
+
+    private var currentStep: (index: Int, label: String)? {
+        switch trip.summary?.presentation?.state {
+        case "CONFIRMING": (0, "Confirming reservation")
+        case "PAYMENT_UNDER_REVIEW": (1, "Checking payment")
+        case "PREPARING_TICKET": (2, "Preparing ticket")
+        default: nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: NexusSpacing.space0) {
             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                let activeLabel = currentStep.flatMap { !step.1 && $0.index == index ? $0.label : nil }
                 HStack(alignment: .top, spacing: NexusSpacing.space12) {
                     NexusIcon(name: step.1 ? .check : .clock, size: NexusIconSize.md)
                         .foregroundStyle(step.1 ? NexusSemanticColors.brandPrimary : NexusSemanticColors.textSecondary)
                         .accessibilityHidden(true)
-                    Text(step.0)
+                    Text(activeLabel ?? (step.1 ? step.0 : pendingSteps[index]))
                         .nexusTextStyle(NexusText.styles.body.withFontWeight(step.1 ? .semibold : .regular))
                         .foregroundStyle(step.1 ? NexusSemanticColors.textPrimary : NexusSemanticColors.textSecondary)
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityValue(step.1 ? "Confirmed" : "Not confirmed")
+                .accessibilityValue(step.1 ? "Confirmed" : (activeLabel == nil ? "Not confirmed" : "In progress"))
                 if index < steps.count - 1 {
                     Rectangle()
                         .fill(NexusSemanticColors.borderDefault)

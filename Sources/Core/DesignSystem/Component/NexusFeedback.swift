@@ -164,11 +164,13 @@ struct NexusFeedbackPanel: View {
     var onPrimaryAction: (() -> Void)?
     var secondaryActionLabel: String?
     var onSecondaryAction: (() -> Void)?
+    var icon: NexusIconName?
+    var compact = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: NexusSpacing.space16) {
             HStack(alignment: .top, spacing: NexusSpacing.space12) {
-                NexusIcon(name: status == .error ? .error : .info, size: NexusIconSize.sm)
+                NexusIcon(name: icon ?? (status == .error ? .error : .info), size: NexusIconSize.sm)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: NexusSpacing.space4) {
                     Text(title).nexusTextStyle(NexusText.styles.listTitle)
@@ -186,7 +188,7 @@ struct NexusFeedbackPanel: View {
             }
         }
         .foregroundStyle(status.colors.content)
-        .padding(NexusSpacing.space16)
+        .padding(compact ? NexusSpacing.space12 : NexusSpacing.space16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(status.colors.container)
         .clipShape(RoundedRectangle(cornerRadius: NexusRadius.lg))

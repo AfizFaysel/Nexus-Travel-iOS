@@ -320,21 +320,13 @@ private struct TripSummaryRow: View {
 
     private var status: some View {
         VStack(alignment: .trailing, spacing: NexusSpacing.space4) {
-            Text(trip.summary?.statusLabel ?? "Status unavailable")
-                .nexusTextStyle(NexusText.styles.tripStatus)
-                .foregroundStyle(statusColor)
+            NexusStatusChip(text: trip.summary?.statusLabel ?? "Status unavailable", status: trip.feedbackStatus)
             if trip.summary?.showsVerifiedPayment == true {
                 secondary("Payment verified")
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .multilineTextAlignment(.trailing)
-    }
-
-    private var statusColor: Color {
-        if trip.listSection == .attention { return NexusSemanticColors.warningText }
-        if trip.summary?.presentation?.state == "TICKET_READY" { return NexusSemanticColors.successText }
-        return NexusSemanticColors.textPrimary
     }
 
     private func secondary(_ value: String) -> some View {
