@@ -4,24 +4,44 @@ struct BookingReviewScreenRoute: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: BookingReviewViewModel
     @State private var eventTask: Task<Void, Never>?
+    @State private var searchEditor: HomeViewModel?
+    @State private var prefillTask: Task<Void, Never>?
     let flightDetails: FlightDetails?
     let router: Router
     let onSearchAgain: () -> Void
+    let onTrips: () -> Void
+    let makeSearchEditor: () -> HomeViewModel
+    let onAnotherFlightResults: (String, HomeUiState) -> Void
     init(
         viewModel: BookingReviewViewModel,
         flightDetails: FlightDetails?,
         router: Router,
-        onSearchAgain: @escaping () -> Void
+        onSearchAgain: @escaping () -> Void,
+        onTrips: @escaping () -> Void,
+        makeSearchEditor: @escaping () -> HomeViewModel,
+        onAnotherFlightResults: @escaping (String, HomeUiState) -> Void
     ) {
         _viewModel = State(initialValue: viewModel)
         self.flightDetails = flightDetails
         self.router = router
         self.onSearchAgain = onSearchAgain
+        self.onTrips = onTrips
+        self.makeSearchEditor = makeSearchEditor
+        self.onAnotherFlightResults = onAnotherFlightResults
     }
     var body: some View {
         BookingReviewScreen(viewModel: viewModel, flightDetails: flightDetails, send: send)
             .task { do { try await viewModel.load() } catch is CancellationError { return } catch { return } }
-            .onDisappear { eventTask?.cancel() }
+            .onDisappear { eventTask?.cancel(); prefillTask?.cancel() }
+            .sheet(isPresented: Binding(get: { searchEditor != nil }, set: { if !$0 { searchEditor = nil } })) {
+                if let editor = searchEditor {
+                    // Closing the sheet keeps the reservation and its payment step on screen.
+                    EditSearchSheetRoute(viewModel: editor, title: "Search flights") { searchId in
+                        searchEditor = nil
+                        onAnotherFlightResults(searchId, editor.uiState)
+                    }
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase != .active { eventTask?.cancel() }
             }
@@ -39,6 +59,8 @@ struct BookingReviewScreenRoute: View {
                 case .acceptUpdatedPrice: try await viewModel.acceptUpdatedPrice()
                 case .submit: try await viewModel.submit()
                 case .home: viewModel.home()
+                case .trips: viewModel.trips()
+                case .searchAnotherFlight: viewModel.searchAnotherFlight()
                 case .payment: viewModel.payment()
                 case .trip: viewModel.trip()
                 }
@@ -51,17 +73,46 @@ struct BookingReviewScreenRoute: View {
             switch event {
             case .back: router.pop()
             case .home: router.popToRoot()
+            case .trips: onTrips()
             case .chooseAnotherFlight: onSearchAgain()
+            case .searchAnotherFlight: openSearchEditor()
             case let .payment(id): router.push(.paymentProof(.init(bookingId: id)))
             case let .trip(id): router.push(.tripDetail(.init(tripId: id)))
             }
         }
     }
+    private func openSearchEditor() {
+        let editor = makeSearchEditor()
+        searchEditor = editor
+        guard let flightDetails else { return }
+        // Keep the draft's exact child and infant ages when it describes the same travelers.
+        let sameTravelers = editor.uiState.travelers == flightDetails.travelers
+        guard let request = flightDetails.anotherFlightSearch(
+            childAges: sameTravelers ? editor.uiState.childAges : nil,
+            infantAges: sameTravelers ? editor.uiState.infantAges : nil
+        ) else { return }
+        prefillTask?.cancel()
+        prefillTask = Task { try? await editor.prefillSearch(request) }
+    }
 }
 
 enum BookingReviewEvent: Equatable, Sendable {
     case back, retry, checkStatus, chooseAnotherFlight, reviewUpdatedPrice, acceptUpdatedPrice
-    case submit, home, payment, trip
+    case submit, home, trips, searchAnotherFlight, payment, trip
+}
+
+extension FlightDetails {
+    /// The booked route, travelers, cabin and dates as a new search; multi-city trips start from the saved draft instead.
+    func anotherFlightSearch(childAges: [Int]?, infantAges: [Int]?) -> FlightSearchRequest? {
+        guard tripType != .multiCity else { return nil }
+        let cabin = [CabinClass.economy, .premiumEconomy, .business, .first]
+            .first { $0.label.caseInsensitiveCompare(cabinLabel) == .orderedSame } ?? .economy
+        return FlightSearchRequest.make(
+            tripType: tripType, originCode: originCode, destinationCode: destinationCode,
+            departureDate: departureDate, returnDate: returnDate, travelers: travelers,
+            cabinClass: cabin, childAges: childAges, infantAges: infantAges
+        )
+    }
 }
 
 struct BookingReviewScreen: View {
@@ -86,8 +137,15 @@ struct BookingReviewScreen: View {
             case .submitted: submitted
             }
         }
-        .navigationTitle("Review booking").navigationBarBackButtonHidden()
-        .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Back", systemImage: NexusIconName.back.systemName) { send(.back) } } }
+        .navigationTitle(viewModel.isAfterBookingAttempt ? "Booking update" : "Review booking").navigationBarBackButtonHidden()
+        .toolbar {
+            // After a booking attempt there is no way back into the old flow: the only exit is Trips.
+            if viewModel.isAfterBookingAttempt {
+                ToolbarItem(placement: .topBarTrailing) { Button("Go to Trips") { send(.trips) } }
+            } else {
+                ToolbarItem(placement: .topBarLeading) { Button("Back", systemImage: NexusIconName.back.systemName) { send(.back) } }
+            }
+        }
         .onChange(of: viewModel.state.pendingPriceQuote) { _, quote in
             showsPriceDecision = quote != nil
         }
@@ -144,8 +202,10 @@ struct BookingReviewScreen: View {
                     }
                 }
                 if let message = viewModel.state.message {
+                    // Pending outcomes are amber, matching Android; no new search is offered while the airline may still hold seats.
                     NexusFeedbackPanel(
                         title: feedbackTitle, message: message,
+                        status: viewModel.state.bookingOutcomeUnknown ? .warning : .error,
                         primaryActionLabel: feedbackActionLabel,
                         onPrimaryAction: feedbackAction
                     )
@@ -164,23 +224,46 @@ struct BookingReviewScreen: View {
     }
 
     private var submitted: some View {
-        VStack(spacing: NexusSpacing.space16) {
-            NexusIcon(name: .check, size: 64).foregroundStyle(.green).accessibilityHidden(true)
-            Text(viewModel.state.canUploadProof ? "Flight held" : "Booking status updated")
-                .font(.title2.bold()).accessibilityAddTraits(.isHeader)
-            Text(viewModel.state.canUploadProof
-                 ? "The airline confirmed your hold. Your ticket is not issued yet. Upload your payment receipt so our team can verify it."
-                 : "View your trip for the current payment and ticket status.")
-                .foregroundStyle(.secondary)
-            if let reference = viewModel.state.details?.bookingReference { notice("Booking ref", reference) }
-            if let checkedAt = lastSupplierCheckLabel {
-                Text(checkedAt).font(.caption).foregroundStyle(.secondary)
+        let reserved = viewModel.state.canUploadProof
+        return ScrollView {
+            VStack(alignment: .leading, spacing: NexusSpacing.space16) {
+                Text(reserved ? "Your flight is reserved" : "Booking update")
+                    .nexusTextStyle(NexusText.styles.screenTitle)
+                    .foregroundStyle(NexusSemanticColors.textHeading)
+                    .accessibilityAddTraits(.isHeader)
+                if let flightDetails {
+                    VStack(alignment: .leading, spacing: NexusSpacing.space4) {
+                        Text("\(flightDetails.originCode) → \(flightDetails.destinationCode)").font(.title3.bold())
+                        Text("\(flightDetails.departureDate.reviewLabel) · \(flightDetails.travelers.summary()) · \(flightDetails.cabinLabel)")
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                NexusFeedbackPanel(
+                    title: reserved ? "Reservation confirmed" : "Booking status updated",
+                    message: reserved
+                        ? "The airline is holding your flight. Pay by bank transfer and upload your receipt so we can verify payment and issue your ticket."
+                        : "Check Trips for payment and ticket updates.",
+                    status: reserved ? .success : .info
+                )
+                if let details = viewModel.state.details {
+                    section(nil, rows: (details.bookingReference.map { [("Booking reference", $0)] } ?? [])
+                        + [("Total", details.fareTotal.formatted)])
+                }
+                if let checkedAt = lastSupplierCheckLabel {
+                    Text(checkedAt).font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Saved in Trips. Your ticket is issued after payment verification.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if reserved {
+                    NexusPrimaryButton("View bank details", fillsWidth: true) { send(.payment) }
+                }
+                NexusSecondaryButton("View trip", fillsWidth: true) { send(.trip) }
+                NexusTextButton("Search another flight") { send(.searchAnotherFlight) }
+                    .frame(maxWidth: .infinity)
             }
-            if viewModel.state.canUploadProof {
-                NexusPrimaryButton("Upload payment receipt", fillsWidth: true) { send(.payment) }
-            }
-            NexusSecondaryButton("View trip", fillsWidth: true) { send(.trip) }
-        }.multilineTextAlignment(.center).padding(NexusSpacing.space24)
+            .padding(NexusSpacing.space16)
+        }
     }
 
     private var feedbackTitle: String {
@@ -190,7 +273,7 @@ struct BookingReviewScreen: View {
         case .changedHoldReview: return "Hold needs review"
         case .notHeld: return "No flight was held"
         case .pending: return "Booking request in progress"
-        case .unknown: return "Checking airline confirmation"
+        case .unknown: return "Confirmation pending"
         case .expired: return "Hold expired"
         case .cancelled: return "Hold cancelled"
         default: return "Booking status needs checking"
@@ -234,9 +317,9 @@ struct BookingReviewScreen: View {
         return "Last checked with the airline: \(date.formatted(date: .abbreviated, time: .shortened))"
     }
 
-    private func section(_ title: String, rows: [(String, String)]) -> some View {
+    private func section(_ title: String?, rows: [(String, String)]) -> some View {
         VStack(alignment: .leading, spacing: NexusSpacing.space12) {
-            Text(title).font(.headline).accessibilityAddTraits(.isHeader)
+            if let title { Text(title).font(.headline).accessibilityAddTraits(.isHeader) }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 ViewThatFits(in: .horizontal) { HStack(alignment: .firstTextBaseline) { Text(row.0).foregroundStyle(.secondary); Spacer(); Text(row.1).multilineTextAlignment(.trailing) }; VStack(alignment: .leading) { Text(row.0).foregroundStyle(.secondary); Text(row.1) } }
             }

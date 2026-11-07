@@ -25,7 +25,8 @@ final class HomeViewModel {
         flightSearchRepository: any FlightSearchRepository,
         authRepository: any AuthRepository,
         searchValidator: HomeSearchValidator = HomeSearchValidator(),
-        today: @escaping () -> LocalDate
+        today: @escaping () -> LocalDate,
+        initialState: HomeUiState? = nil
     ) {
         self.homeRepository = homeRepository
         self.airportRepository = airportRepository
@@ -33,6 +34,11 @@ final class HomeViewModel {
         self.authRepository = authRepository
         self.searchValidator = searchValidator
         self.today = today
+        if let initialState {
+            // A search editor starts from an existing draft and never reloads Home content over it.
+            uiState = initialState
+            hasLoaded = true
+        }
     }
 
     func load() async throws {
@@ -181,6 +187,68 @@ final class HomeViewModel {
         uiState.tripType = .oneWay
         uiState.multiCityLegs = []
         uiState.selectedService = .flight
+        clearFeedback()
+    }
+
+    /// Prefills the form from an earlier search without searching; dates that have passed are cleared.
+    func prefillSearch(_ request: FlightSearchRequest) async throws {
+        let codes = Set([request.originCode, request.destinationCode] + request.legs.flatMap { [$0.originCode, $0.destinationCode] })
+        var airportsByCode: [String: Airport] = [:]
+        for code in codes {
+            if let airport = try await airport(matching: code) { airportsByCode[code.uppercased()] = airport }
+        }
+        try Task.checkCancellation()
+        guard let origin = airportsByCode[request.originCode.uppercased()],
+              let destination = airportsByCode[request.destinationCode.uppercased()],
+              request.legs.allSatisfy({ airportsByCode[$0.originCode.uppercased()] != nil && airportsByCode[$0.destinationCode.uppercased()] != nil })
+        else {
+            uiState.message = "We couldn't restore this search. Enter your route and try again."
+            return
+        }
+        let currentDay = today()
+        func kept(_ date: LocalDate?) -> LocalDate? { date.flatMap { $0 < currentDay ? nil : $0 } }
+        let departureDate = kept(request.departureDate)
+        uiState.tripType = request.tripType
+        uiState.origin = origin
+        uiState.destination = destination
+        uiState.departureDate = departureDate
+        uiState.returnDate = departureDate == nil ? nil : kept(request.returnDate)
+        uiState.travelers = request.travelers
+        uiState.childAges = request.childAges
+        uiState.infantAges = request.infantAges
+        uiState.cabinClass = request.cabinClass
+        uiState.multiCityLegs = request.legs.map { leg in
+            MultiCityLegUiState(origin: airportsByCode[leg.originCode.uppercased()],
+                                destination: airportsByCode[leg.destinationCode.uppercased()],
+                                departureDate: kept(leg.departureDate))
+        }
+        uiState.selectedService = .flight
+        uiState.isSearching = false
+        clearFeedback()
+    }
+
+    /// Creates an independent editor seeded with this form, for searching from a sheet without touching Home.
+    func makeSearchEditor() -> HomeViewModel {
+        var draft = uiState
+        draft.activeSheet = nil
+        draft.airportQuery = ""
+        draft.isSearching = false
+        draft.validationError = nil
+        draft.message = nil
+        return HomeViewModel(
+            homeRepository: homeRepository, airportRepository: airportRepository,
+            flightSearchRepository: flightSearchRepository, authRepository: authRepository,
+            searchValidator: searchValidator, today: today, initialState: draft
+        )
+    }
+
+    /// Copies a search edited elsewhere back into this form without searching.
+    func restoreSearchDraft(_ draft: HomeUiState) {
+        cancelAirportSearch()
+        uiState = draft
+        uiState.activeSheet = nil
+        uiState.airportQuery = ""
+        uiState.isSearching = false
         clearFeedback()
     }
 

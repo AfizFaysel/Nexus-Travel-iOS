@@ -3,15 +3,33 @@ import SwiftUI
 struct SearchResultsScreenRoute: View {
     @State private var viewModel: SearchResultsViewModel
     @State private var eventTask: Task<Void, Never>?
+    @State private var searchEditor: HomeViewModel?
     let router: Router
+    let makeSearchEditor: () -> HomeViewModel
+    let onEditedSearchResults: (String, HomeUiState) -> Void
 
-    init(viewModel: SearchResultsViewModel, router: Router) {
+    init(
+        viewModel: SearchResultsViewModel,
+        router: Router,
+        makeSearchEditor: @escaping () -> HomeViewModel,
+        onEditedSearchResults: @escaping (String, HomeUiState) -> Void
+    ) {
         _viewModel = State(initialValue: viewModel)
         self.router = router
+        self.makeSearchEditor = makeSearchEditor
+        self.onEditedSearchResults = onEditedSearchResults
     }
 
     var body: some View {
         SearchResultsScreen(state: viewModel.uiState, onEvent: send)
+            .sheet(isPresented: Binding(get: { searchEditor != nil }, set: { if !$0 { searchEditor = nil } })) {
+                if let editor = searchEditor {
+                    EditSearchSheetRoute(viewModel: editor) { searchId in
+                        searchEditor = nil
+                        onEditedSearchResults(searchId, editor.uiState)
+                    }
+                }
+            }
             .task {
                 do { try await viewModel.loadResults() } catch is CancellationError { return } catch { return }
                 if let unavailableOffer = router.unavailableOffer {
@@ -30,7 +48,8 @@ struct SearchResultsScreenRoute: View {
             await viewModel.onEvent(event)
             while let navigation = viewModel.consumeNavigationEvent() {
                 switch navigation {
-                case .back, .toModifySearch, .toNearbyDates: router.pop()
+                case .back, .toNearbyDates: router.pop()
+                case .toModifySearch: searchEditor = makeSearchEditor()
                 case let .toFlightDetails(reference):
                     router.push(.flightDetails(FlightDetailsRoute(reference: reference)))
                 }

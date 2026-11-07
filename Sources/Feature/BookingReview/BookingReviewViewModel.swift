@@ -15,7 +15,9 @@ struct BookingReviewUiState: Equatable, Sendable {
     var pendingPriceQuote: BookingPriceQuote?
     var isRepricing = false; var isAcceptingPrice = false
 }
-enum BookingReviewNavigation: Equatable, Sendable { case back, home, chooseAnotherFlight, payment(String), trip(String) }
+enum BookingReviewNavigation: Equatable, Sendable {
+    case back, home, trips, chooseAnotherFlight, searchAnotherFlight, payment(String), trip(String)
+}
 
 @MainActor @Observable
 final class BookingReviewViewModel {
@@ -183,9 +185,17 @@ final class BookingReviewViewModel {
             state.bookingOutcomeUnknown = true
         }
     }
-    func back() { navigation.append(.back) }
+    /// Whether a hold was requested, so the earlier booking screens must not be reopened.
+    var isAfterBookingAttempt: Bool { state.screenState == .submitted || state.bookingOutcomeUnknown }
+    func back() { navigation.append(isAfterBookingAttempt ? .trips : .back) }
     func home() { navigation.append(.home) }
+    func trips() { navigation.append(.trips) }
     func chooseAnotherFlight() { navigation.append(.chooseAnotherFlight) }
+    /// Only a confirmed reservation offers a new search; an unknown outcome could still become a duplicate hold.
+    func searchAnotherFlight() {
+        guard state.screenState == .submitted, !state.isCheckingStatus else { return }
+        navigation.append(.searchAnotherFlight)
+    }
     func dismissPriceQuote() { state.pendingPriceQuote = nil }
     private var holdKey: String {
         if let idempotencyKeyOverride { return idempotencyKeyOverride }

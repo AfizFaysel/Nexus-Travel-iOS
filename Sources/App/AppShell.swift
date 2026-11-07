@@ -159,9 +159,41 @@ struct AppShell: View {
                 authRepository: authRepository,
                 bookingFlowState: bookingFlowState,
                 onSearchAgain: startFreshSearch,
-                onTripSearch: openTripSearch
+                onTripSearch: openTripSearch,
+                searchSheet: SearchSheetActions(
+                    makeEditor: homeViewModel.makeSearchEditor,
+                    showEditedResults: showEditedSearchResults,
+                    showAnotherFlightResults: showAnotherFlightResults,
+                    finishBooking: finishBookingFlow
+                )
             )
         }
+    }
+
+    /// Fresh results from Edit search replace the results they were edited from.
+    private func showEditedSearchResults(_ searchId: String, draft: HomeUiState) {
+        homeViewModel.restoreSearchDraft(draft)
+        router.pop()
+        router.push(.searchResults(.init(searchId: searchId)))
+    }
+
+    /// Results from a booking's new search replace the finished booking flow; Back from them returns to Home.
+    private func showAnotherFlightResults(_ searchId: String, draft: HomeUiState) {
+        homeViewModel.restoreSearchDraft(draft)
+        bookingFlowState.clear()
+        router.popToRoot()
+        if router.selectedTab != .home {
+            router.select(.home)
+            router.popToRoot()
+        }
+        router.push(.searchResults(.init(searchId: searchId)))
+    }
+
+    /// Leaves a finished booking attempt for Trips without keeping the booking screens in history.
+    private func finishBookingFlow() {
+        bookingFlowState.clear()
+        router.popToRoot()
+        router.select(.trips)
     }
 
     private func openTripSearch(_ trip: CustomerTrip?) {
@@ -308,6 +340,7 @@ private struct AppDestinations: ViewModifier {
     let bookingFlowState: BookingFlowState
     let onSearchAgain: () -> Void
     let onTripSearch: (CustomerTrip?) -> Void
+    let searchSheet: SearchSheetActions
 
     func body(content: Content) -> some View {
         content.navigationDestination(for: AppRoute.self) { route in
@@ -315,7 +348,9 @@ private struct AppDestinations: ViewModifier {
             case let .searchResults(payload):
                 SearchResultsScreenRoute(
                     viewModel: SearchResultsViewModel(searchId: payload.searchId, repository: searchResultsRepository),
-                    router: router
+                    router: router,
+                    makeSearchEditor: searchSheet.makeEditor,
+                    onEditedSearchResults: searchSheet.showEditedResults
                 )
             case let .flightDetails(payload):
                 FlightDetailsScreenRoute(
@@ -377,7 +412,10 @@ private struct AppDestinations: ViewModifier {
                     viewModel: BookingReviewViewModel(reviewId: route.reviewId, repository: bookingRequestRepository),
                     flightDetails: bookingFlowState.passengerDetails,
                     router: router,
-                    onSearchAgain: onSearchAgain
+                    onSearchAgain: onSearchAgain,
+                    onTrips: searchSheet.finishBooking,
+                    makeSearchEditor: searchSheet.makeEditor,
+                    onAnotherFlightResults: searchSheet.showAnotherFlightResults
                 )
             case let .paymentProof(route):
                 PaymentProofScreenRoute(
@@ -526,7 +564,8 @@ private extension View {
         authRepository: any AuthRepository,
         bookingFlowState: BookingFlowState,
         onSearchAgain: @escaping () -> Void,
-        onTripSearch: @escaping (CustomerTrip?) -> Void
+        onTripSearch: @escaping (CustomerTrip?) -> Void,
+        searchSheet: SearchSheetActions
     ) -> some View {
         modifier(AppDestinations(
             router: router,
@@ -548,8 +587,17 @@ private extension View {
             authRepository: authRepository,
             bookingFlowState: bookingFlowState,
             onSearchAgain: onSearchAgain,
-            onTripSearch: onTripSearch
+            onTripSearch: onTripSearch,
+            searchSheet: searchSheet
         ))
     }
+}
+
+/// App-level actions for the Edit search sheet and for leaving a finished booking.
+private struct SearchSheetActions {
+    let makeEditor: () -> HomeViewModel
+    let showEditedResults: (String, HomeUiState) -> Void
+    let showAnotherFlightResults: (String, HomeUiState) -> Void
+    let finishBooking: () -> Void
 }
 
